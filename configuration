@@ -4,9 +4,19 @@ else
   configuration_script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
+use_java_home='${JAVA_HOME}'
+
 case $(uname -a | tr '[:upper:]' '[:lower:]') in
   *darwin*)
     os_name=darwin
+    ;;
+  *mingw*|*msys*)
+    os_name=msys
+    use_java_home=$(cygpath "${JAVA_HOME}")
+    ;;
+  *cygwin*)
+    os_name=cygwin
+    use_java_home=$(cygpath "${JAVA_HOME}")
     ;;
   *)
     os_name=unknown_os
@@ -14,6 +24,7 @@ case $(uname -a | tr '[:upper:]' '[:lower:]') in
 esac
 
 root_directory="."
+configuration_name='playing_with_classpath'
 source_directory="${root_directory}/src"
 source_code_directory="${source_directory}/main/java/com/me/example"
 jni_source_code_directory="${source_code_directory}/jni"
@@ -29,17 +40,32 @@ build_directory="${root_directory}/build"
 intermediate_directory="${build_directory}/intermediate"
 rust_target_directory="${root_directory}/target"
 jni_native_makefile_path="${build_directory}/Makefile"
-jni_native_name='playing_with_classpath'
-jni_native_c_name="${jni_native_name}_c"
+jni_native_name="${configuration_name}"
 jni_native_name_hyphenated="$(echo ${jni_native_name} | tr '_' '-')"
 jni_native_name_lower="${jni_native_name}"
 jni_native_name_upper="$(echo ${jni_native_name} | tr [:lower:] [:upper:])"
-jni_native_c_dylib="lib${jni_native_c_name}.dylib"
-jni_native_rust_name='playing_with_classpath_rust'
+
+jni_native_c_name="${jni_native_name}_c"
+jni_native_rust_name="${jni_native_name}_rust"
+
+case "${os_name}" in
+  msys|cygwin)
+    jni_native_c_dylib="${jni_native_c_name}.dll"
+    jni_native_rust_dylib="${jni_native_rust_name}.dll"
+    ;;
+  darwin)
+    jni_native_c_dylib="lib${jni_native_c_name}.dylib"
+    jni_native_rust_dylib="lib${jni_native_rust_name}.dylib"
+    ;;
+  *)
+    jni_native_c_dylib="${jni_native_c_name}.so"
+    jni_native_rust_dylib="${jni_native_rust_name}.so"
+    ;;
+esac
+
 jni_native_rust_name_upper="$(echo ${jni_native_rust_name} | tr [:lower:] [:upper:])"
-jni_native_rust_dylib="lib${jni_native_rust_name}.dylib"
 classfiles_directory="${build_directory}/classfiles"
-classfiles_package_subdirectory="com/me/example/playing_with_classpath"
+classfiles_package_subdirectory="com/me/example/${configuration_name}"
 classfiles_package_directory="${classfiles_directory}/${classfiles_package_subdirectory}"
 jar_directory="${build_directory}/jar"
 jar_path="${jar_directory}/example.jar"
