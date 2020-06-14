@@ -193,9 +193,22 @@ a\\
 }
 EOCOMMAND
   rm -f "${jni_native_code_rust_directory}/Cargo.toml"
+  case "${os_name}" in
+    msys|cygwin)
+      rustup override set stable-x86_64-pc-windows-gnu
+      ;;
+  esac
+
   cargo init --lib --name "${jni_native_rust_name}" "${jni_native_code_rust_directory}"
 
-  sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+  case "${os_name}" in
+    darwin)
+      sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+      ;;
+    *)
+      sed -i'' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+      ;;
+  esac
 
   ensure_dir "${jni_native_code_rust_source_directory}"
   cat <<-'EOF' >"${jni_native_rust_lib_path}"
@@ -243,7 +256,21 @@ EOF
 # Wouldn't advise editing and expecting to keep your changes.
 INTERMEDIATE_DIR ?= intermediate
 OUTPUT_DIR ?= .
-INCLUDE_DIRS += \${JAVA_HOME}/include \${JAVA_HOME}/include/darwin
+INCLUDE_DIRS += ${use_java_home}/include
+EOF
+      case "${os_name}" in
+        msys|cygwin)
+            cat <<-EOF >>"${jni_native_makefile_path}"
+INCLUDE_DIRS += ${use_java_home}/include/win32
+EOF
+          ;;
+        darwin)
+            cat <<-EOF >>"${jni_native_makefile_path}"
+INCLUDE_DIRS += ${use_java_home}/include/darwin
+EOF
+          ;;
+      esac
+      cat <<-EOF >>"${jni_native_makefile_path}"
 CXXFLAGS += -std=c++1z
 
 ifneq (\$(BUILD_NAME),)
@@ -373,9 +400,17 @@ EOF
     done <"${jni_c_header_path}"
 
     # Finish the Makefile
+    case "${os_name}" in
+      darwin)
+        cxx_shared_flag='-dynamiclib'
+        ;;
+      *)
+        cxx_shared_flag='-shared'
+        ;;
+    esac
     cat <<-EOF >>"${jni_native_makefile_path}"
 \$(OUTPUT_DIR)/${jni_native_c_dylib}: \$(OBJ)
-${tab}\$(CXX) -dynamiclib -o \$@ \$^ \$(CXXFLAGS)
+${tab}\$(CXX) "${cxx_shared_flag}" -o \$@ \$^ \$(CXXFLAGS)
 
 cleanobj:
 ${tab}rm -f \$(OBJ)
