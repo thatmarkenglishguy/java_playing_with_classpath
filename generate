@@ -201,6 +201,9 @@ EOCOMMAND
 
   cargo init --lib --name "${jni_native_rust_name}" "${jni_native_code_rust_directory}"
 
+  # Cargo keeps adding the same commented out entries to the .gitignore so let's ignore it.
+  git checkout .gitignore
+
   case "${os_name}" in
     darwin)
       sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
