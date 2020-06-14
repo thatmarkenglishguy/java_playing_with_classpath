@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+#Deduce this script's directory
+if [ -z ${BASH_SOURCE} ]; then
+  script_dir=$(readlink -f $(dirname "${0}"))
+else
+  script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
+source "${script_dir}/configuration"
+
+echo 'Compiling'
+echo 'Running javac to create class files...'
+# -g Debug info
+# -d Directory to put class files in
+# -Xlint:all Enables all warnings
+javac \
+  -d "${classfiles_directory}" \
+  -Xlint:all \
+  -verbose \
+  "${source_code_directory}/Foo.java" \
+  "${source_code_directory}/Bar.java" \
+  "${jni_source_code_directory}/JniExample.java" \
+  "${jni_source_code_directory}/JniExampleInit.java" \
+  "${source_code_directory}/Main.java"
+
+echo
+echo 'Making JNI c components...'
+(cd "${build_directory}"; \
+  mkdir -p release intermediate/release/generated/jni; make INTERMEDIATE_DIR=intermediate/release OUTPUT_DIR=release OPTIMIZATIONFLAG=-O3 BUILD_NAME='c Release'; \
+  mkdir -p debug intermediate/debug/generated/jni; make INTERMEDIATE_DIR=intermediate/debug OUTPUT_DIR=debug BUILD_NAME='c Debug';
+)
+
+echo
+echo 'Making JNI rust components...'
+(cd "${jni_native_code_rust_directory}"; \
+  cargo build --release; \
+  cargo build;
+)
+
+echo
+echo 'Creating jar...'
+use_classfiles_directory="${classfiles_package_subdirectory}"
+jar \
+  --verbose \
+  --create \
+  --file "${jar_path}" \
+  --manifest "${manifest_path}" \
+  -C "${classfiles_directory}" \
+  "${use_classfiles_directory}/Foo.class" \
+  -C "${classfiles_directory}" \
+  "${use_classfiles_directory}/Bar.class" \
+  -C "${classfiles_directory}" \
+  "${use_classfiles_directory}/Main.class" \
+  -C "${classfiles_directory}" \
+  "${use_classfiles_directory}/JniExampleInit.class" \
+  -C "${classfiles_directory}" \
+  "${use_classfiles_directory}/JniExample.class" \
+  -C "${build_directory}" \
+  "release/${jni_native_c_dylib}" \
+  -C "${build_directory}" \
+  "debug/${jni_native_c_dylib}" \
+  -C "${rust_target_directory}" \
+  "release/${jni_native_rust_dylib}" \
+  -C "${rust_target_directory}" \
+  "debug/${jni_native_rust_dylib}"
+echo
+echo 'Done compiling'
+

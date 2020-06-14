@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+#Deduce this script's directory
+if [ -z ${BASH_SOURCE} ]; then
+  script_dir=$(readlink -f $(dirname "${0}"))
+else
+  script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
+source "${script_dir}/configuration"
+
+rm -rf "${source_directory}"
+rm -rf "${build_directory}"
+rm -rf "${manifest_directory}"
+rm -f "${jni_native_code_rust_directory}/Cargo.toml"
+

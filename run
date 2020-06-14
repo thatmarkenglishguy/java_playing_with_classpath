@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+#Deduce this script's directory
+if [ -z ${BASH_SOURCE} ]; then
+  script_dir=$(readlink -f $(dirname "${0}"))
+else
+  script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
+source "${script_dir}/configuration"
+
+echo 'Running'
+echo 'Running c extension'
+java -jar "${jar_path}"
+echo
+
+java -Dplaying-with-classpath.debug-build="true" -jar "${jar_path}"
+echo
+
+echo 'Running rust extension'
+java -Dplaying-with-classpath.rust="true" -jar "${jar_path}"
+echo
+
+java -Dplaying-with-classpath.debug-build="true" \
+  -Dplaying-with-classpath.rust="true" \
+  -jar "${jar_path}"
+echo
+
+echo 'Done running'

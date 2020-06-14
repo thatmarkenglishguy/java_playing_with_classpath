@@ -1,0 +1,418 @@
+#!/usr/bin/env bash
+
+#Deduce this script's directory
+if [ -z ${BASH_SOURCE} ]; then
+  script_dir=$(readlink -f $(dirname "${0}"))
+else
+  script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+tab='	'
+
+## Helper functions
+function ensure_dir() {
+  if [ ! -d "${1}" ]
+  then
+    if [ -n "${2}" ]
+    then
+      echo "${2}"
+    fi
+    mkdir -p "${1}"
+  fi
+}
+
+source "${script_dir}/configuration"
+
+## Implementation functions
+function make_typical_java() {
+  local name
+  local name_lower
+  name="${1}"
+  name_lower="$(echo ${name} | tr '[:upper:]' '[:lower:]')"
+  if [ ! -f "${source_code_directory}/${name}.java" ]
+  then
+    cat <<-EOF >"${source_code_directory}/${name}.java"
+package com.me.example.playing_with_classpath;
+
+public class ${name} {
+  public void sayHi${name}() {
+    System.out.println("Hi ${name_lower}!");
+  }
+}
+EOF
+  fi
+}
+
+function make_main_java() {
+  local source_code_directory
+  source_code_directory="${1}"
+
+  if [ ! -f "${source_code_directory}/Main.java" ]
+  then
+    cat <<-'EOF' >"${source_code_directory}/Main.java"
+package com.me.example.playing_with_classpath;
+
+public class Main {
+    public static void main(String[] args) {
+      final Foo foo = new Foo();
+      foo.sayHiFoo();
+
+      final Bar bar = new Bar();
+      bar.sayHiBar();
+
+      JniExampleInit.init();
+      final JniExample jniExample = new JniExample();
+      jniExample.sayHiJni();
+
+      System.exit(123);
+    }
+}
+EOF
+  fi
+}
+
+function make_manifest_file() {
+  local manifest_directory
+  local manifest_path
+  manifest_directory="${1}"
+  manifest_path="${2}"
+
+  echo
+  echo 'Making Manifest'
+  ensure_dir "${manifest_directory}"
+  
+  if [ ! -f "${manifest_path}" ]
+  then
+    cat <<-'EOF' >"${manifest_path}"
+Manifest-Version: 1.0
+Implementation-Title: playing_with_classpath
+Built-By: some scripts
+Implementation-Vendor-Id: com.me
+Created-By: 13.0.1 (AdoptOpenJDK)
+Build-Jdk: 1.13.1+9
+Main-Class: com.me.example.playing_with_classpath.Main
+EOF
+  fi
+}
+
+function make_jni_example_init_java() {
+  local jni_source_code_directory
+  local jni_native_name
+  local jni_native_name_upper
+  local jni_native_name_hyphenated
+
+  jni_source_code_directory="${1}"
+  jni_native_name="${2}"
+  jni_native_name_upper="${3}"
+  jni_native_name_hyphenated="${4}"
+
+  if [ ! -f "${jni_source_code_directory}/JniExampleInit.java" ]
+  then
+    cat <<-EOF >"${jni_source_code_directory}/JniExampleInit.java"
+package com.me.example.playing_with_classpath;
+
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+
+final class JniExampleInit {
+    private static final String C_LIBRARY_NAME = "${jni_native_c_name}";
+    private static final String RUST_LIBRARY_NAME = "${jni_native_rust_name}";
+    private static boolean loaded = false;
+
+    public static synchronized void init() {
+        if (loaded) {
+            return;
+        }
+
+        final boolean useDebugBuild = "TRUE".equalsIgnoreCase(System.getenv("${jni_native_name_upper}_DEBUG")) || Boolean.getBoolean("${jni_native_name_hyphenated}.debug-build");
+        final boolean useRustBuild = "TRUE".equalsIgnoreCase(System.getenv("${jni_native_rust_name_upper}")) || Boolean.getBoolean("${jni_native_name_hyphenated}.rust");
+        final String libraryName = useRustBuild ? System.mapLibraryName(RUST_LIBRARY_NAME) : System.mapLibraryName(C_LIBRARY_NAME);
+        System.out.println("Library name: " + libraryName);
+
+        final String debugOrRelease = useDebugBuild ? "debug" : "release";
+        System.out.println("Using the " + debugOrRelease + " Jni Example");
+        final String path = "/" + debugOrRelease + "/" + libraryName;
+        System.out.println("Resource stream is: " + path);
+
+        try (final InputStream libInputStream = JniExampleInit.class.getResourceAsStream(path)) {
+            if (libInputStream == null) {
+                throw new UnsatisfiedLinkError(String.format("%s not found on resource path", path));
+            }
+
+            final File tempDirectory = Files.createTempDirectory("${jni_native_name_hyphenated}" + "-" + debugOrRelease).toFile();
+            System.out.println("Temp directory is: " + tempDirectory.getPath());
+            tempDirectory.deleteOnExit();
+
+            final File libraryFile = new File(tempDirectory, libraryName);
+            System.out.println("Library file is: " + libraryFile.getPath());
+            libraryFile.deleteOnExit();
+
+            Files.copy(libInputStream, libraryFile.toPath());
+
+            System.load(libraryFile.getAbsolutePath());
+            loaded = true;
+        } catch (final IOException e) {
+            System.out.println("Classpath: " + System.getProperty("java.class.path"));
+            throw new LinkageError(String.format("Error loading Jni Example library %s", libraryName), e);
+        }
+    }
+}
+EOF
+  fi
+}
+
+function make_rust_jni() {
+  local jni_native_rust_name
+  local jni_native_code_rust_directory
+  local jni_native_code_rust_source_directory
+  local sed_command
+  jni_native_rust_name="${1}"
+  jni_native_code_rust_directory="${2}"
+  jni_native_code_rust_source_directory="${3}"
+  read -r -d '' sed_command <<-EOCOMMAND
+/\[dependencies\]/{
+i\\
+[lib]
+i\\
+name = \"${jni_native_rust_name}\"
+i\\
+crate-type = [\"cdylib\"]
+i\\
+path = \"${jni_native_rust_src_relative_lib_path}\"
+i\\
+\\
+
+a\\
+# the Rust bindings to the Java Native Interface
+a\\
+jni = "0.14.0"
+a\\
+\\
+
+}
+EOCOMMAND
+  rm -f "${jni_native_code_rust_directory}/Cargo.toml"
+  cargo init --lib --name "${jni_native_rust_name}" "${jni_native_code_rust_directory}"
+
+  sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+
+  ensure_dir "${jni_native_code_rust_source_directory}"
+  cat <<-'EOF' >"${jni_native_rust_lib_path}"
+mod jni_example;
+EOF
+
+  ensure_dir "${jni_native_code_rust_source_directory}/jni_example"
+}
+
+function make_jni_example() {
+  # For now, rely on globals.
+  # Creates JniExample class with native method,
+  # c header and implementation,
+  # Makefile
+  local jni_c_header_path
+  local jni_c_source_path
+  local jni_c_object_path
+  local jni_c_header_makefile_path
+  local jni_c_source_makefile_path
+  local jni_function_regex
+  local fni_args_regex
+  local jni_source_ready_to_generate
+  local jni_rust_source_path
+  local capture_jni_args
+
+  if [ ! -f "${jni_java_path}" ]
+  then
+    cat <<-'EOF' >"${jni_java_path}"
+package com.me.example.playing_with_classpath;
+
+public class JniExample {
+    private native void sayHiJniNative();
+
+    public void sayHiJni() {
+      sayHiJniNative(); 
+    }
+}
+EOF
+
+    echo "Making Jni Makefile: '${jni_native_makefile_path}'"
+    if [ ! -f "${jni_native_makefile_path}" ]
+    then
+      cat <<-EOF >"${jni_native_makefile_path}"
+# Generated by ${0}.
+# Wouldn't advise editing and expecting to keep your changes.
+INTERMEDIATE_DIR ?= intermediate
+OUTPUT_DIR ?= .
+INCLUDE_DIRS += \${JAVA_HOME}/include \${JAVA_HOME}/include/darwin
+CXXFLAGS += -std=c++1z
+
+ifneq (\$(BUILD_NAME),)
+  \$(info Defining BUILD_NAME to '\$(BUILD_NAME)')
+  CXXFLAGS += -DBUILD_NAME="\$(BUILD_NAME)"
+endif
+
+ifeq (\$(OPTIMIZATIONFLAG),)
+  \$(info OPTIMIZATIONFLAG is not set)
+  OPTIMIZATIONFLAG =-g -O
+  \$(info OPTIMIZATIONFLAG is '\$(OPTIMIZATIONFLAG)')
+#else
+#  \$(info OPTIMIZATIONFLAG is '\$(OPTIMIZATIONFLAG)')
+endif
+
+CXXFLAGS += -Wall -Wextra -Wpedantic -pedantic -Weffc++ -pedantic-errors \
+-Wdouble-promotion \
+\$(OPTIMIZATIONFLAG)
+INCLUDE_PARAMS=\$(foreach d, \$(INCLUDE_DIRS), -I\$d)
+CXXFLAGS += \$(INCLUDE_PARAMS)
+
+all: \$(OUTPUT_DIR)/${jni_native_c_dylib}
+
+EOF
+    fi # endif Makefile not exist
+
+    echo
+    echo 'Making Jni native wrapper (note this currently generates a .class file as a side-effect)'
+    javac -h "${jni_native_code_directory}" \
+      -d ${classfiles_directory} \
+      "${jni_source_code_directory}/JniExample.java"
+
+    jni_c_header_path="$(get_jni_c_header_path)"
+    jni_c_source_path="$(get_jni_c_source_path ${jni_c_header_path})"
+    jni_c_object_path="$(get_jni_c_object_path ${jni_c_source_path})"
+    jni_c_header_makefile_path="$(get_makefile_to_src_path ${jni_c_header_path})"
+    jni_c_source_makefile_path="$(get_makefile_to_src_path ${jni_c_source_path})"
+    jni_rust_source_path="${jni_native_code_rust_source_directory}/jni_example/mod.rs"
+
+    jni_function_regex='JNIEXPORT[[:space:]]+(.*)(Java_[^[:space:]]+)[[:space:]]*'
+    jni_args_regex='([^;]+);'
+    jni_source_ready_to_generate=0
+    capture_jni_args=0
+    while read -r
+    do
+      if [ ${capture_jni_args} -ne 0 ]
+      then
+        (( capture_jni_args-- ))
+        if [[ "${REPLY}" =~ ${jni_args_regex} ]]
+        then
+          jni_function_args="${BASH_REMATCH[1]}"
+          jni_source_ready_to_generate=1
+        fi
+      elif [[ "${REPLY}" =~ ${jni_function_regex} ]]
+      then
+        capture_jni_args=1
+        jni_function_prefix="${BASH_REMATCH[1]}"
+        jni_function_name="${BASH_REMATCH[2]}"
+      fi
+
+      # If first pass at jni c source file
+      if [ ! -f "${jni_c_source_path}" ]
+      then
+        # Start of c source file
+        cat <<-EOF >"${jni_c_source_path}"
+#include <iostream>
+#include "$(basename ${jni_c_header_path})"
+
+#ifndef BUILD_NAME
+#define BUILD_NAME UnknownBuild
+#endif // BUILD_NAME
+
+#define TEXT2(macro_text) #macro_text
+#define TEXT(macro_text) TEXT2(macro_text)
+EOF
+
+        # Add c object file to Makefile
+        echo "Adding $(basename ${jni_c_object_path}) object file to Makefile."
+
+        cat <<-EOF >>"${jni_native_makefile_path}"
+OBJ += \$(INTERMEDIATE_DIR)/${jni_c_object_path}
+
+\$(INTERMEDIATE_DIR)/${jni_c_object_path}: ${jni_c_source_makefile_path} ${jni_c_header_makefile_path}
+${tab}\$(CXX) -c -o \$@ \$< \$(CPPFLAGS) \$(CXXFLAGS)
+
+EOF
+
+      fi #endif first pass at jni c source file
+
+      if [ ! -f "${jni_rust_source_path}" ]
+      then
+        #use jni::sys::{jboolean, jdouble, jint, jintArray, jlong, jlongArray, jstring};
+        #use jni::objects::{JClass, JString};
+        cat <<-EOF >"${jni_rust_source_path}"
+use jni::objects::{JClass};
+use jni::JNIEnv;
+
+EOF
+      fi #endif first pass at jni rust source file
+
+      if [ ${jni_source_ready_to_generate} -ne 0 ]
+      then
+        jni_source_ready_to_generate=0
+        # Now append the c implementation
+        cat <<-EOF >>"${jni_c_source_path}"
+
+JNIEXPORT ${jni_function_prefix} ${jni_function_name} ${jni_function_args} {
+  std::cout << "Hello from JNI Example '${jni_function_name}' !" << std::endl;
+  std::cout << "The build is: '" TEXT(BUILD_NAME) "'" << std::endl;
+}
+EOF
+
+      # Append the rust implementation
+##[no_mangle]
+        cat <<-EOF >>"${jni_native_code_rust_source_directory}/jni_example/mod.rs"
+#[no_mangle]
+extern "C" fn ${jni_function_name}(
+    _env: JNIEnv,
+    _class: JClass
+) {
+  println!("Hello from JNI rust Example '${jni_function_name}' !");
+  println!("TODO: Work out what build this is");
+}
+EOF
+
+      fi # jni source ready to generate
+    done <"${jni_c_header_path}"
+
+    # Finish the Makefile
+    cat <<-EOF >>"${jni_native_makefile_path}"
+\$(OUTPUT_DIR)/${jni_native_c_dylib}: \$(OBJ)
+${tab}\$(CXX) -dynamiclib -o \$@ \$^ \$(CXXFLAGS)
+
+cleanobj:
+${tab}rm -f \$(OBJ)
+
+clean: cleanobj
+${tab}rm -f \$(OUTPUT_DIR)/${jni_native_c_dylib}
+
+EOF
+  fi # endif no Jni java file
+}
+
+## Script
+### Create the top level directories
+echo
+echo 'Making build structure'
+rm -rf "${build_directory}"
+ensure_dir "${jni_native_build_directory}" "Making jni build directory ${jni_native_build_directory}"
+ensure_dir "${intermediate_directory}"
+ensure_dir "${jni_native_intermediate_directory}"
+
+echo 'Making source'
+ensure_dir "${source_code_directory}"
+ensure_dir "${classfiles_directory}"
+ensure_dir "${jar_directory}"
+
+ensure_dir "${jni_native_code_directory}" 'Creating jni directories.'
+ensure_dir "${jni_source_code_directory}" 'Making JNI on java side.'
+
+make_typical_java 'Foo'
+make_typical_java 'Bar'
+make_main_java "${source_code_directory}"
+make_manifest_file "${manifest_directory}" "${manifest_path}"
+
+make_jni_example_init_java "${jni_source_code_directory}" "${jni_native_name}" "${jni_native_name_upper}" "${jni_native_name_hyphenated}"
+make_rust_jni "${jni_native_rust_name}" "${jni_native_code_rust_directory}" "${jni_native_code_rust_source_directory}"
+make_jni_example
+
+
+echo
+echo 'Done generating'
