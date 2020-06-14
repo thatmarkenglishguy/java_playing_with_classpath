@@ -12,5 +12,6 @@ source "${script_dir}/configuration"
 rm -rf "${source_directory}"
 rm -rf "${build_directory}"
 rm -rf "${manifest_directory}"
-rm -f "${jni_native_code_rust_directory}/Cargo.toml"
+rm -f "${jni_native_code_rust_directory}/Cargo.toml" "${jni_native_code_rust_directory}/Cargo.lock"
+
 
