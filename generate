@@ -413,7 +413,7 @@ EOF
     esac
     cat <<-EOF >>"${jni_native_makefile_path}"
 \$(OUTPUT_DIR)/${jni_native_c_dylib}: \$(OBJ)
-${tab}\$(CXX) "${cxx_shared_flag}" -o \$@ \$^ \$(CXXFLAGS)
+${tab}\$(CXX) ${cxx_shared_flag} -o \$@ \$^ \$(CXXFLAGS)
 
 cleanobj:
 ${tab}rm -f \$(OBJ)
