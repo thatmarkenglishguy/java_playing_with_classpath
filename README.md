@@ -1,9 +1,9 @@
-# playing_with_classpath
+# playing_with_classpath
 
 Generates, compiles, and runs code to demonstrate java build tools.
 Can be run from any directory.
 
-## Main scripts
+## Main scripts
 ### [clean](./clean)
 Clean the source code and build artifacts (except the rust target directory because that would be slow).
 
