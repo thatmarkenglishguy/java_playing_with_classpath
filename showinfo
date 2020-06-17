@@ -9,8 +9,14 @@ fi
 
 source "${script_dir}/configuration"
 
-jar tvf "${jar_path}"
+if [ -n "${1}" ]
+then
+  the_jar_path="${1}"
+else
+  the_jar_path="${jar_path}"
+fi
+jar tvf "${the_jar_path}"
 
 echo
 echo 'META-INF/MANIFEST.MF content:'
-unzip -p "${jar_path}" META-INF/MANIFEST.MF
+unzip -p "${the_jar_path}" META-INF/MANIFEST.MF
