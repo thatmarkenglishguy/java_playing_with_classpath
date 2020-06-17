@@ -68,7 +68,7 @@ esac
 
 jni_native_rust_name_upper="$(echo ${jni_native_rust_name} | tr [:lower:] [:upper:])"
 classfiles_directory="${build_directory}/classfiles"
-classfiles_package_subdirectory="com/me/example/${configuration_name}"
+classfiles_package_subdirectory="${package_subdirectory}/${configuration_name}"
 classfiles_package_directory="${classfiles_directory}/${classfiles_package_subdirectory}"
 jar_directory="${build_directory}/jar"
 jar_path="${jar_directory}/example.jar"
