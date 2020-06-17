@@ -125,7 +125,7 @@ function run_gradle_init() {
 
   echo
   echo 'Adjusting build.gradle'
-  sed_inplace 's/com\.me\.example\.App/com.me.example.Main/' "${root_directory}/build.gradle"
+  sed_inplace "s/com\.me\.example\.App/${package_name}.${configuration_name}.Main/" "${root_directory}/build.gradle"
 
   read -r -d '' sed_command <<-EOCOMMAND
 s/AppTest/MainTest/
