@@ -109,6 +109,8 @@ EOF
 
 function run_gradle_init() {
   local sed_command
+  local main_test_path
+  main_test_path="${test_code_directory}/MainTest.java"
 
   echo 'Running gradle init...'
   gradle init \
@@ -118,36 +120,33 @@ function run_gradle_init() {
     --test-framework 'junit-jupiter' \
     --type 'java-application'
 
-  rm "${source_directory}/App.java"
-  mv "${test_code_directory}/App.java" "${test_code_directory}/Main.java"
+  rm "${source_code_directory}/App.java"
+  mv "${test_code_directory}/AppTest.java" "${main_test_path}"
 
+  echo
   echo 'Adjusting build.gradle'
-  sed_inplace 's/com\.me\.example\.App/com.me.example.Main' "${root_dir}/build.gradle"
-#  case "${os_name}" in
-#    darwin)
-#      sed -i'' 's/com\.me\.example\.App/com.me.example.Main' "${root_dir}/build.gradle"
-#      ;;
-#    *)
-#      sed -i '' 's/com\.me\.example\.App/com.me.example.Main' "${root_dir}/build.gradle"
-#      ;;
-#  esac
+  sed_inplace 's/com\.me\.example\.App/com.me.example.Main/' "${root_directory}/build.gradle"
 
-  read -r -d'' sed_command <<-EOCOMMAND
+  read -r -d '' sed_command <<-EOCOMMAND
+s/AppTest/MainTest/
+
 /@Test void/,/}/ {
   # Change the test name
   s/appHasAGreeting/mainTest/
 
   # Skip the test declaration
   /@Test/n
-  # Quit at the closing brace
-  /}/q
+
   # Delete the other lines
   d
 }
+# Put the class brace back at end end ($)
+\$i\\
+    }
 EOCOMMAND
   echo
   echo 'Adjusting the AppTest'
-  sed_inplace -e "${sed_command}" "${test_code_directory}/AppTest.java"
+  sed_inplace -e "${sed_command}" "${main_test_path}"
 }
 
 function make_jni_example_init_java() {
@@ -261,15 +260,6 @@ EOCOMMAND
   git checkout .gitignore
   
   sed_inplace -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
-
-#  case "${os_name}" in
-#    darwin)
-#      sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
-#      ;;
-#    *)
-#      sed -i'' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
-#      ;;
-#  esac
 
   ensure_dir "${jni_native_code_rust_source_directory}"
   cat <<-'EOF' >"${jni_native_rust_lib_path}"
@@ -504,6 +494,7 @@ make_typical_java 'Foo'
 make_typical_java 'Bar'
 make_main_java "${source_code_directory}"
 make_manifest_file "${manifest_directory}" "${manifest_path}"
+run_gradle_init
 
 make_jni_example_init_java "${jni_source_code_directory}" "${jni_native_name}" "${jni_native_name_upper}" "${jni_native_name_hyphenated}"
 make_rust_jni "${jni_native_rust_name}" "${jni_native_code_rust_directory}" "${jni_native_code_rust_source_directory}"
