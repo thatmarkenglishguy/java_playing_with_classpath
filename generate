@@ -9,6 +9,19 @@ fi
 tab='	'
 
 ## Helper functions
+function sed_inplace() {
+  case "${os_name}" in
+    darwin)
+      #sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+      sed -i '' "${@}"
+      ;;
+    *)
+      sed -i'' "${@}"
+      #sed -i'' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+      ;;
+  esac
+}
+
 function ensure_dir() {
   if [ ! -d "${1}" ]
   then
@@ -92,6 +105,49 @@ Build-Jdk: 1.13.1+9
 Main-Class: com.me.example.playing_with_classpath.Main
 EOF
   fi
+}
+
+function run_gradle_init() {
+  local sed_command
+
+  echo 'Running gradle init...'
+  gradle init \
+    --package "${package_name}" \
+    --project-name "${configuration_name}" \
+    --dsl groovy \
+    --test-framework 'junit-jupiter' \
+    --type 'java-application'
+
+  rm "${source_directory}/App.java"
+  mv "${test_code_directory}/App.java" "${test_code_directory}/Main.java"
+
+  echo 'Adjusting build.gradle'
+  sed_inplace 's/com\.me\.example\.App/com.me.example.Main' "${root_dir}/build.gradle"
+#  case "${os_name}" in
+#    darwin)
+#      sed -i'' 's/com\.me\.example\.App/com.me.example.Main' "${root_dir}/build.gradle"
+#      ;;
+#    *)
+#      sed -i '' 's/com\.me\.example\.App/com.me.example.Main' "${root_dir}/build.gradle"
+#      ;;
+#  esac
+
+  read -r -d'' sed_command <<-EOCOMMAND
+/@Test void/,/}/ {
+  # Change the test name
+  s/appHasAGreeting/mainTest/
+
+  # Skip the test declaration
+  /@Test/n
+  # Quit at the closing brace
+  /}/q
+  # Delete the other lines
+  d
+}
+EOCOMMAND
+  echo
+  echo 'Adjusting the AppTest'
+  sed_inplace -e "${sed_command}" "${test_code_directory}/AppTest.java"
 }
 
 function make_jni_example_init_java() {
@@ -203,15 +259,17 @@ EOCOMMAND
 
   # Cargo keeps adding the same commented out entries to the .gitignore so let's ignore it.
   git checkout .gitignore
+  
+  sed_inplace -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
 
-  case "${os_name}" in
-    darwin)
-      sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
-      ;;
-    *)
-      sed -i'' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
-      ;;
-  esac
+#  case "${os_name}" in
+#    darwin)
+#      sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+#      ;;
+#    *)
+#      sed -i'' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+#      ;;
+#  esac
 
   ensure_dir "${jni_native_code_rust_source_directory}"
   cat <<-'EOF' >"${jni_native_rust_lib_path}"
