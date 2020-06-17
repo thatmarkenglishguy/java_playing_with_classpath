@@ -1,1 +1,2 @@
-alias tree=./tree
+alias tree="tree -I 'target'"
+
