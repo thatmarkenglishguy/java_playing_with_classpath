@@ -26,7 +26,10 @@ esac
 root_directory="."
 configuration_name='playing_with_classpath'
 source_directory="${root_directory}/src"
-source_code_directory="${source_directory}/main/java/com/me/example"
+package_name='com.me.example'
+package_subdirectory="$(echo "${package_name}" | tr '.' '/')"
+source_code_directory="${source_directory}/main/java/${package_subdirectory}"
+test_code_directory="${source_directory}/test/java/${package_subdirectory}"
 jni_source_code_directory="${source_code_directory}/jni"
 jni_java_path="${jni_source_code_directory}/JniExample.java"
 jni_native_code_directory="${source_directory}/generated/jni"
