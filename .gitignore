@@ -93,3 +93,8 @@ src/
 
 # Ignore Gradle build output directory
 build
+
+# Ignore gradle build files
+build.gradle
+settings.gradle
+
