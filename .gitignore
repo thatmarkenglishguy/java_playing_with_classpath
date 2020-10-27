@@ -2,91 +2,10 @@
 Cargo.lock
 
 *.sw?
-
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
 Cargo.toml
 META-INF/
 build/
 src/
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
-
-
-#Added by cargo
-#
-#already existing elements were commented out
-
-#/target
-#Cargo.lock
 
 # Ignore Gradle project-specific cache directory
 .gradle
@@ -97,4 +16,7 @@ build
 # Ignore gradle build files
 build.gradle
 settings.gradle
+
+# Ignore generated project configuration
+.project_configuration
 
