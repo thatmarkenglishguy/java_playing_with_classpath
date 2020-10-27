@@ -7,8 +7,8 @@ else
   script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-"${script_dir}/generate"
-"${script_dir}/compile"
+"${script_dir}/generate" "${@}"
+"${script_dir}/compile" "${@}"
 "${script_dir}/showinfo"
 "${script_dir}/run"
 
