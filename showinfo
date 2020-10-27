@@ -9,8 +9,30 @@ fi
 
 source "${script_dir}/configuration"
 
-jar tvf "${jar_path}"
+declare -a jar_paths
+jar_paths=()
 
-echo
-echo 'META-INF/MANIFEST.MF content:'
-unzip -p "${jar_path}" META-INF/MANIFEST.MF
+if [ -n "${1}" ]
+then
+  jar_paths+=( "${1}" )
+else
+  if [ -f "${jar_path}" ]
+  then
+    jar_paths+=( "${jar_path}" )
+  fi
+
+  if [ -f "${gradle_jar_path}" ]
+  then
+    jar_paths+=( "${gradle_jar_path}" )
+  fi
+fi
+
+for the_jar_path in "${jar_paths[@]}"
+do
+  echo "jar path: ${the_jar_path}"
+  jar tvf "${the_jar_path}"
+
+  echo
+  echo 'META-INF/MANIFEST.MF content:'
+  unzip -p "${the_jar_path}" META-INF/MANIFEST.MF
+done

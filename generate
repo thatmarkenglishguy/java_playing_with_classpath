@@ -9,6 +9,19 @@ fi
 tab='	'
 
 ## Helper functions
+function sed_inplace() {
+  case "${os_name}" in
+    darwin)
+      #sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+      sed -i '' "${@}"
+      ;;
+    *)
+      sed -i'' "${@}"
+      #sed -i'' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
+      ;;
+  esac
+}
+
 function ensure_dir() {
   if [ ! -d "${1}" ]
   then
@@ -20,7 +33,13 @@ function ensure_dir() {
   fi
 }
 
-source "${script_dir}/configuration"
+source "${script_dir}/configuration" "${@}"
+if [ "${project_configuration_path}" != "${configuration_script_dir}/.project_configuration" ]
+then
+  cat <<-EOF >"${configuration_script_dir}/.project_configuration"
+source "${project_configuration_path}"
+EOF
+fi
 
 ## Implementation functions
 function make_typical_java() {
@@ -31,7 +50,7 @@ function make_typical_java() {
   if [ ! -f "${source_code_directory}/${name}.java" ]
   then
     cat <<-EOF >"${source_code_directory}/${name}.java"
-package com.me.example.playing_with_classpath;
+package ${package_name}.${configuration_name};
 
 public class ${name} {
   public void sayHi${name}() {
@@ -44,26 +63,40 @@ EOF
 
 function make_main_java() {
   local source_code_directory
+  local typical_java_classes
+  local java_class
+  local java_instance
+
   source_code_directory="${1}"
+  declare -a typical_java_classes
+  typical_java_classes=( "${@:2}" )
 
   if [ ! -f "${source_code_directory}/Main.java" ]
   then
-    cat <<-'EOF' >"${source_code_directory}/Main.java"
-package com.me.example.playing_with_classpath;
+    cat <<-EOF >"${source_code_directory}/Main.java"
+package ${package_name}.${configuration_name};
 
 public class Main {
     public static void main(String[] args) {
-      final Foo foo = new Foo();
-      foo.sayHiFoo();
+EOF
+    for java_class in "${typical_java_classes[@]}"
+    do
+      java_instance=$(echo "${java_class}" | tr '[:upper:]' '[:lower:]')
 
-      final Bar bar = new Bar();
-      bar.sayHiBar();
+      cat <<-EOF >>"${source_code_directory}/Main.java"
+      final ${java_class} ${java_instance} = new ${java_class}();
+      ${java_instance}.sayHi${java_class}();
 
+EOF
+    done
+
+    cat <<-EOF >>"${source_code_directory}/Main.java"
       JniExampleInit.init();
       final JniExample jniExample = new JniExample();
       jniExample.sayHiJni();
 
-      System.exit(123);
+//      System.exit(123);
+      System.exit(0);
     }
 }
 EOF
@@ -82,16 +115,93 @@ function make_manifest_file() {
   
   if [ ! -f "${manifest_path}" ]
   then
-    cat <<-'EOF' >"${manifest_path}"
+    cat <<-EOF >"${manifest_path}"
 Manifest-Version: 1.0
-Implementation-Title: playing_with_classpath
+Implementation-Title: ${configuration_name}
 Built-By: some scripts
-Implementation-Vendor-Id: com.me
-Created-By: 13.0.1 (AdoptOpenJDK)
-Build-Jdk: 1.13.1+9
-Main-Class: com.me.example.playing_with_classpath.Main
+Implementation-Vendor-Id: ${package_name}
+Created-By: ${java_version} (AdoptOpenJDK)
+Build-Jdk: ${java_build}
+Main-Class: ${package_name}.${configuration_name}.Main
 EOF
   fi
+}
+
+function run_gradle_init() {
+  local sed_command
+  local main_test_path
+  local package_name_pattern
+
+  main_test_path="${test_code_directory}/MainTest.java"
+  package_name_pattern="${package_name//./\.}"
+
+  echo 'Running gradle init...'
+  gradle init \
+    --package "${package_name}" \
+    --project-name "${gradle_project_name}" \
+    --dsl groovy \
+    --test-framework 'junit-jupiter' \
+    --type 'java-application'
+
+  rm "${source_code_directory}/App.java"
+  mv "${test_code_directory}/AppTest.java" "${main_test_path}"
+
+  echo
+  echo 'Adjusting build.gradle'
+  sed_inplace "s/${package_name_pattern}\.App/${package_name}.${configuration_name}.Main/" "${root_directory}/build.gradle"
+  cat <<-EOF >>"${root_directory}/build.gradle"
+
+jar {
+  manifest {
+    attributes(
+      "Implementation-Title": "${configuration_name}",
+      "Built-By": "some scripts and some gradle",
+      "Implementation-Vendor-Id": "${package_name}",
+      "Created-By": "${java_version} (JDK)",
+      "Build-Jdk": "${java_build}",
+      "Main-Class": "${package_name}.${configuration_name}.Main"
+    )
+  }
+}
+
+sourceSets {
+  main {
+    resources {
+      srcDirs "${rust_target_directory}"
+      include "release/${jni_native_rust_dylib}"
+      include "debug/${jni_native_rust_dylib}"
+      srcDirs "${build_directory}"
+      include "release/${jni_native_c_dylib}"
+      include "debug/${jni_native_c_dylib}"
+    }
+  }
+}
+
+run {    
+  systemProperties System.getProperties()
+}
+EOF
+
+  read -r -d '' sed_command <<-EOCOMMAND
+s/AppTest/MainTest/
+
+/@Test void/,/}/ {
+  # Change the test name
+  s/appHasAGreeting/mainTest/
+
+  # Skip the test declaration
+  /@Test/n
+
+  # Delete the other lines
+  d
+}
+# Put the class brace back at end ($)
+\$i\\
+    }
+EOCOMMAND
+  echo
+  echo 'Adjusting the AppTest'
+  sed_inplace -e "${sed_command}" "${main_test_path}"
 }
 
 function make_jni_example_init_java() {
@@ -108,7 +218,7 @@ function make_jni_example_init_java() {
   if [ ! -f "${jni_source_code_directory}/JniExampleInit.java" ]
   then
     cat <<-EOF >"${jni_source_code_directory}/JniExampleInit.java"
-package com.me.example.playing_with_classpath;
+package ${package_name}.${configuration_name};
 
 import java.io.File;
 import java.io.IOException;
@@ -186,7 +296,7 @@ i\\
 a\\
 # the Rust bindings to the Java Native Interface
 a\\
-jni = "0.14.0"
+jni = "0.17.0"
 a\\
 \\
 
@@ -203,15 +313,8 @@ EOCOMMAND
 
   # Cargo keeps adding the same commented out entries to the .gitignore so let's ignore it.
   git checkout .gitignore
-
-  case "${os_name}" in
-    darwin)
-      sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
-      ;;
-    *)
-      sed -i'' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
-      ;;
-  esac
+  
+  sed_inplace -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
 
   ensure_dir "${jni_native_code_rust_source_directory}"
   cat <<-'EOF' >"${jni_native_rust_lib_path}"
@@ -239,8 +342,8 @@ function make_jni_example() {
 
   if [ ! -f "${jni_java_path}" ]
   then
-    cat <<-'EOF' >"${jni_java_path}"
-package com.me.example.playing_with_classpath;
+    cat <<-EOF >"${jni_java_path}"
+package ${package_name}.${configuration_name};
 
 public class JniExample {
     private native void sayHiJniNative();
@@ -442,10 +545,14 @@ ensure_dir "${jar_directory}"
 ensure_dir "${jni_native_code_directory}" 'Creating jni directories.'
 ensure_dir "${jni_source_code_directory}" 'Making JNI on java side.'
 
-make_typical_java 'Foo'
-make_typical_java 'Bar'
-make_main_java "${source_code_directory}"
+for java_class in "${typical_java_classes[@]}"
+do
+  make_typical_java "${java_class}"
+done
+
+make_main_java "${source_code_directory}" "${typical_java_classes[@]}"
 make_manifest_file "${manifest_directory}" "${manifest_path}"
+run_gradle_init
 
 make_jni_example_init_java "${jni_source_code_directory}" "${jni_native_name}" "${jni_native_name_upper}" "${jni_native_name_hyphenated}"
 make_rust_jni "${jni_native_rust_name}" "${jni_native_code_rust_directory}" "${jni_native_code_rust_source_directory}"

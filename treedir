@@ -1,5 +1,0 @@
-#!/usr/bin/env sh
-
-# Find the directories which aren't . or target
-#find . -maxdepth 1 \( -not -path ./target -not -path . \) -type d -
-find * -maxdepth 0 -type d -not -path target | xargs tree

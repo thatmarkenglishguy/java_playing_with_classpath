@@ -1,10 +1,34 @@
+# vim: filetype=bash:
+
 if [ -z ${BASH_SOURCE} ]; then
   configuration_script_dir=$(readlink -f $(dirname "${0}"))
 else
   configuration_script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-use_java_home='${JAVA_HOME}'
+if [ -z "${1}" ]
+then
+  if [ -f "${configuration_script_dir}/.project_configuration" ]
+  then
+    project_configuration_path="${configuration_script_dir}/.project_configuration"
+  elif [ -f "${configuration_script_dir}/project_configuration" ]
+  then
+    project_configuration_path="${configuration_script_dir}/project_configuration"
+  else
+    echo "Unable to locate project_configuration (which is weird)." >&2
+    exit 1
+  fi
+else
+  project_configuration_path="${1}"
+fi
+
+if [ -z "${JAVA_HOME}" ]
+then
+  echo 'JAVA_HOME not set. '>&2
+  exit 1
+fi
+
+use_java_home="${JAVA_HOME}"
 
 case $(uname -a | tr '[:upper:]' '[:lower:]') in
   *darwin*)
@@ -23,10 +47,35 @@ case $(uname -a | tr '[:upper:]' '[:lower:]') in
     ;;
 esac
 
-root_directory="."
-configuration_name='playing_with_classpath'
+if [[ $(java -version 2>&1 | head -n1) =~ \"(.*)\" ]]
+then
+  java_version="${BASH_REMATCH[1]}"
+else
+  echo "Unable to determine java version" >&2
+  exit 2
+fi
+
+if [[ $(java -version 2>&1 | head -n2) =~ build[[:space:]]*([^\)]+)\) ]]
+then
+  java_build="${BASH_REMATCH[1]}"
+else
+  echo "Unable to determine java build" >&2
+  exit 3
+fi
+
+if [ ! -f "${project_configuration_path}" ]
+then
+  echo "Unable to find project configuration: ${project_configuration_path}" >&2
+  exit 4
+else
+  source "${project_configuration_path}"
+fi
+
+root_directory="${root_directory:-.}"
 source_directory="${root_directory}/src"
-source_code_directory="${source_directory}/main/java/com/me/example"
+package_subdirectory="$(echo "${package_name}" | tr '.' '/')"
+source_code_directory="${source_directory}/main/java/${package_subdirectory}"
+test_code_directory="${source_directory}/test/java/${package_subdirectory}"
 jni_source_code_directory="${source_code_directory}/jni"
 jni_java_path="${jni_source_code_directory}/JniExample.java"
 jni_native_code_directory="${source_directory}/generated/jni"
@@ -65,11 +114,20 @@ esac
 
 jni_native_rust_name_upper="$(echo ${jni_native_rust_name} | tr [:lower:] [:upper:])"
 classfiles_directory="${build_directory}/classfiles"
-classfiles_package_subdirectory="com/me/example/${configuration_name}"
+classfiles_package_subdirectory="${package_subdirectory}/${configuration_name}"
 classfiles_package_directory="${classfiles_directory}/${classfiles_package_subdirectory}"
+gradle_project_name='example'
+gradle_jar_directory="${build_directory}/libs"
+gradle_jar_path="${gradle_jar_directory}/${gradle_project_name}.jar"
 jar_directory="${build_directory}/jar"
 jar_path="${jar_directory}/example.jar"
 jni_native_build_directory="${build_directory}/jni"
+if [ -f "${jar_path}" ]
+then
+  use_jar_path="${jar_path}"
+else
+  use_jar_path="${gradle_jar_path}"
+fi
 
 function get_jni_c_header_path() {
   local jni_header_path

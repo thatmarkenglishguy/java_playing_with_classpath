@@ -7,10 +7,16 @@ else
   script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-source "${script_dir}/configuration"
+source "${script_dir}/configuration" "${@}"
 
 echo 'Compiling'
 echo 'Running javac to create class files...'
+declare -a typical_java_java_files
+for java_class in "${typical_java_classes[@]}"
+do
+  typical_java_java_files+=( "${source_code_directory}/${java_class}.java" )
+done
+
 # -g Debug info
 # -d Directory to put class files in
 # -Xlint:all Enables all warnings
@@ -18,8 +24,7 @@ javac \
   -d "${classfiles_directory}" \
   -Xlint:all \
   -verbose \
-  "${source_code_directory}/Foo.java" \
-  "${source_code_directory}/Bar.java" \
+  "${typical_java_java_files[@]}" \
   "${jni_source_code_directory}/JniExample.java" \
   "${jni_source_code_directory}/JniExampleInit.java" \
   "${source_code_directory}/Main.java"
@@ -41,15 +46,20 @@ echo 'Making JNI rust components...'
 echo
 echo 'Creating jar...'
 use_classfiles_directory="${classfiles_package_subdirectory}"
+declare -a typical_java_class_files
+for java_class in "${typical_java_classes[@]}"
+do
+  typical_java_class_files+=( '-C' )
+  typical_java_class_files+=( "${classfiles_directory}" )
+  typical_java_class_files+=( "${use_classfiles_directory}/${java_class}.class" )
+done
+
 jar \
   --verbose \
   --create \
   --file "${jar_path}" \
   --manifest "${manifest_path}" \
-  -C "${classfiles_directory}" \
-  "${use_classfiles_directory}/Foo.class" \
-  -C "${classfiles_directory}" \
-  "${use_classfiles_directory}/Bar.class" \
+  "${typical_java_class_files[@]}" \
   -C "${classfiles_directory}" \
   "${use_classfiles_directory}/Main.class" \
   -C "${classfiles_directory}" \
@@ -64,6 +74,9 @@ jar \
   "release/${jni_native_rust_dylib}" \
   -C "${rust_target_directory}" \
   "debug/${jni_native_rust_dylib}"
+echo
+echo 'Building with gradle'
+./gradlew build
 echo
 echo 'Done compiling'
 

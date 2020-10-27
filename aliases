@@ -1,0 +1,2 @@
+alias tree="tree -I 'target|gradle'"
+
