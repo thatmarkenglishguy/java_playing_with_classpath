@@ -9,14 +9,30 @@ fi
 
 source "${script_dir}/configuration"
 
+declare -a jar_paths
+jar_paths=()
+
 if [ -n "${1}" ]
 then
-  the_jar_path="${1}"
+  jar_paths+=( "${1}" )
 else
-  the_jar_path="${jar_path}"
-fi
-jar tvf "${the_jar_path}"
+  if [ -f "${jar_path}" ]
+  then
+    jar_paths+=( "${jar_path}" )
+  fi
 
-echo
-echo 'META-INF/MANIFEST.MF content:'
-unzip -p "${the_jar_path}" META-INF/MANIFEST.MF
+  if [ -f "${gradle_jar_path}" ]
+  then
+    jar_paths+=( "${gradle_jar_path}" )
+  fi
+fi
+
+for the_jar_path in "${jar_paths[@]}"
+do
+  echo "jar path: ${the_jar_path}"
+  jar tvf "${the_jar_path}"
+
+  echo
+  echo 'META-INF/MANIFEST.MF content:'
+  unzip -p "${the_jar_path}" META-INF/MANIFEST.MF
+done
