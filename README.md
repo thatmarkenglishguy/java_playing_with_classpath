@@ -1,6 +1,6 @@
 # playing_with_classpath
 
-Generates, compiles, and runs code to demonstrate java build tools.
+Generates, compiles, and runs code to demonstrate java build tools including gradle.
 This includes JNI extensions built in C and rust.
 Can be run from any directory.
 
