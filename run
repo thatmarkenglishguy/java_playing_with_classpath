@@ -10,20 +10,36 @@ fi
 source "${script_dir}/configuration"
 
 echo 'Running'
-echo 'Running c extension'
-java -jar "${jar_path}"
+echo 'Running with java'
+echo 'Running c extensioni (java)'
+java -jar "${use_jar_path}"
 echo
 
-java -Dplaying-with-classpath.debug-build="true" -jar "${jar_path}"
+java -Dplaying-with-classpath.debug-build="true" -jar "${use_jar_path}"
 echo
 
-echo 'Running rust extension'
-java -Dplaying-with-classpath.rust="true" -jar "${jar_path}"
+echo 'Running rust extension (java)'
+java -Dplaying-with-classpath.rust="true" -jar "${use_jar_path}"
 echo
 
 java -Dplaying-with-classpath.debug-build="true" \
   -Dplaying-with-classpath.rust="true" \
-  -jar "${jar_path}"
+  -jar "${use_jar_path}"
 echo
+
+echo 'Running with gradle'
+echo 'Running c extension (gradle)'
+./gradlew --quiet run
+echo
+
+./gradlew --quiet run -Dplaying-with-classpath.debug-build="true"
+echo
+
+echo 'Running rust extension (gradle)'
+./gradlew --quiet run -Dplaying-with-classpath.rust="true"
+echo
+
+./gradlew --quiet run -Dplaying-with-classpath.rust="true" \
+  -Dplaying-with-classpath.debug-build="true"
 
 echo 'Done running'
