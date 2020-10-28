@@ -10,6 +10,7 @@ Clean the source code and build artifacts (except the rust target directory beca
 
 ### [generate](./generate)
 Generate the source code and directory structure.
+Can pass a parameter of configuration script for naming.
 
 ### [compile](./compile)
 Compile the source code into `.class` files and then a `.jar` file.
@@ -21,5 +22,9 @@ Dump some information including jar file.
 Run the resulting jar file.
 
 ## Additional scripts
+### [templatise](./templatise)
+Aftering generating code in this directory, use it as the template for another directory (passed as a parameter).
+Generated scripts build c/rust/java jni and run with gradle.
+
 ### [all](./all)
 Run all the steps (apart from clean).
