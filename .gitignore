@@ -13,10 +13,25 @@ src/
 # Ignore Gradle build output directory
 build
 
+# Ignore c build files
+Makefile
+
 # Ignore gradle build files
 build.gradle
 settings.gradle
 
 # Ignore generated project configuration
 .project_configuration
+
+# Ignore Intellij stuff
+.classpath
+.idea/
+.project
+.settings/
+
+# Generated files for use in templating
+local_clean
+local_compile
+local_run
+.local.gitignore
 
