@@ -9,6 +9,7 @@ fi
 
 source "${script_dir}/configuration"
 
+rm -rf "${gradle_root_directory}"
 rm -rf ./bin
 rm -rf "${source_directory}"
 rm -rf "${build_directory}"

@@ -17,7 +17,7 @@ echo 'Compiling'
 declare -a typical_java_java_files
 for java_class in "${typical_java_classes[@]}"
 do
-  typical_java_java_files+=( "${source_code_directory}/${java_class}.java" )
+  typical_java_java_files+=( "${java_source_code_directory}/${java_class}.java" )
 done
 
 function create_jar() {
@@ -64,9 +64,9 @@ javac \
   -Xlint:all \
   -verbose \
   "${typical_java_java_files[@]}" \
-  "${jni_source_code_directory}/JniExample.java" \
-  "${jni_source_code_directory}/JniExampleInit.java" \
-  "${source_code_directory}/Main.java"
+  "${jni_java_source_code_directory}/JniExample.java" \
+  "${jni_java_source_code_directory}/JniExampleInit.java" \
+  "${java_source_code_directory}/Main.java"
 
 "${root_directory}/local_compile"
 

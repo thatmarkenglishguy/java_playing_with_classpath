@@ -30,7 +30,22 @@ then
     ./generate
   fi
 
-  mkdir -p "${target_dir}"
+  target_gradle_directory="${target_dir}"
+  source_gradle_directory="${script_dir}"
+
+  if gradle_has_app_directory
+  then
+    target_gradle_directory="${target_dir}/app"
+  fi
+
+  mkdir -p "${target_gradle_directory}"
+
+  if gradle_has_app_directory
+  then
+    source_gradle_directory="${script_dir}/app"
+    cp -r "${source_gradle_directory}/src" "${target_gradle_directory}/src"
+  fi
+
   cp -r "${script_dir}/src" "${target_dir}/src"
   cp -r "${script_dir}/META-INF" "${target_dir}/META-INF"
   cp -r "${script_dir}/gradle" "${target_dir}/gradle"
@@ -43,7 +58,7 @@ then
   cp "${script_dir}/gradlew" "${target_dir}"
   cp "${script_dir}/gradlew.bat" "${target_dir}"
   cp "${script_dir}/Makefile" "${target_dir}"
-  cp "${script_dir}/build.gradle" "${target_dir}"
+  cp "${gradle_root_directory}/build.gradle" "${target_gradle_directory}"
   cp "${script_dir}/settings.gradle" "${target_dir}"
   cp "${script_dir}/Cargo.toml" "${target_dir}"
   touch "${target_dir}/README.md"
