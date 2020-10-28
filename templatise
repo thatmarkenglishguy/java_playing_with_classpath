@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+
+#Deduce this script's directory
+if [ -z ${BASH_SOURCE} ]; then
+  script_dir=$(readlink -f $(dirname "${0}"))
+else
+  script_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
+target_dir="${1:-.}"
+shift
+source "${script_dir}/configuration"
+in_another_place=0
+
+if [ ! -d "${target_dir}" ] || [ "$(cd "${target_dir}"; pwd)" != "${script_dir}" ]
+then
+  in_another_place=1
+fi
+
+if [ ${in_another_place} -eq 0 ]
+then
+  echo 'Need to specify a directory or run from another directory.' >&2
+  exit 1
+fi
+
+if [ ${in_another_place} -ne 0 ]
+then
+  if [ ! -d "${build_directory}" ]
+  then
+    ./generate
+  fi
+
+  mkdir -p "${target_dir}"
+  cp -r "${script_dir}/src" "${target_dir}/src"
+  cp -r "${script_dir}/META-INF" "${target_dir}/META-INF"
+  cp -r "${script_dir}/gradle" "${target_dir}/gradle"
+  cp -r "${script_dir}/.gradle" "${target_dir}/.gradle"
+
+  #Would love to but there are symlinks which upset cargo build
+#  cp -r "${script_dir}/target" "${target_dir}/target" 
+#  find "${target_dir}/target" -type l -exec rm \;
+
+  cp "${script_dir}/gradlew" "${target_dir}"
+  cp "${script_dir}/gradlew.bat" "${target_dir}"
+  cp "${script_dir}/Makefile" "${target_dir}"
+  cp "${script_dir}/build.gradle" "${target_dir}"
+  cp "${script_dir}/settings.gradle" "${target_dir}"
+  cp "${script_dir}/Cargo.toml" "${target_dir}"
+  touch "${target_dir}/README.md"
+  cd "${target_dir}"
+  cp "${script_dir}/local_clean" "${target_dir}/clean"
+  cp "${script_dir}/local_compile" "${target_dir}/compile"
+  cp "${script_dir}/local_run" "${target_dir}/run"
+  cp "${script_dir}/.local.gitignore" "${target_dir}/.gitignore"
+
+  rm -rf .git/
+  git init
+  git add .gitignore gradlew gradlew.bat gradle
+  git commit -m 'Initial commit'
+  git add Cargo.toml
+  git add src
+  git add META-INF
+  git add Makefile
+  git add build.gradle settings.gradle
+  git add clean compile run
+  git add README.md
+  git commit -m 'Added source code.'
+fi
