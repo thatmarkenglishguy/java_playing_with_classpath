@@ -47,9 +47,9 @@ function make_typical_java() {
   local name_lower
   name="${1}"
   name_lower="$(echo ${name} | tr '[:upper:]' '[:lower:]')"
-  if [ ! -f "${source_code_directory}/${name}.java" ]
+  if [ ! -f "${java_source_code_directory}/${name}.java" ]
   then
-    cat <<-EOF >"${source_code_directory}/${name}.java"
+    cat <<-EOF >"${java_source_code_directory}/${name}.java"
 package ${package_name}.${configuration_name};
 
 public class ${name} {
@@ -71,9 +71,9 @@ function make_main_java() {
   declare -a typical_java_classes
   typical_java_classes=( "${@:2}" )
 
-  if [ ! -f "${source_code_directory}/Main.java" ]
+  if [ ! -f "${java_source_code_directory}/Main.java" ]
   then
-    cat <<-EOF >"${source_code_directory}/Main.java"
+    cat <<-EOF >"${java_source_code_directory}/Main.java"
 package ${package_name}.${configuration_name};
 
 public class Main {
@@ -83,14 +83,14 @@ EOF
     do
       java_instance=$(echo "${java_class}" | tr '[:upper:]' '[:lower:]')
 
-      cat <<-EOF >>"${source_code_directory}/Main.java"
+      cat <<-EOF >>"${java_source_code_directory}/Main.java"
       final ${java_class} ${java_instance} = new ${java_class}();
       ${java_instance}.sayHi${java_class}();
 
 EOF
     done
 
-    cat <<-EOF >>"${source_code_directory}/Main.java"
+    cat <<-EOF >>"${java_source_code_directory}/Main.java"
       JniExampleInit.init();
       final JniExample jniExample = new JniExample();
       jniExample.sayHiJni();
@@ -112,7 +112,7 @@ function make_manifest_file() {
   echo
   echo 'Making Manifest'
   ensure_dir "${manifest_directory}"
-  
+
   if [ ! -f "${manifest_path}" ]
   then
     cat <<-EOF >"${manifest_path}"
@@ -131,25 +131,31 @@ function run_gradle_init() {
   local sed_command
   local main_test_path
   local package_name_pattern
+  local gradle_relative_rust_target_directory
+  local gradle_relative_build_directory
+  gradle_relative_rust_target_directory=$(get_root_path_relative_to_gradle "${rust_target_directory}")
+  gradle_relative_build_directory=$(get_root_path_relative_to_gradle "${build_directory}")
 
-  main_test_path="${test_code_directory}/MainTest.java"
+  main_test_path="${java_test_code_directory}/MainTest.java"
   package_name_pattern="${package_name//./\.}"
 
   echo 'Running gradle init...'
+  set -x
   gradle init \
     --package "${package_name}" \
     --project-name "${gradle_project_name}" \
     --dsl groovy \
     --test-framework 'junit-jupiter' \
     --type 'java-application'
+  set +x
 
-  rm "${source_code_directory}/App.java"
-  mv "${test_code_directory}/AppTest.java" "${main_test_path}"
+  rm "${java_source_code_directory}/App.java"
+  mv "${java_test_code_directory}/AppTest.java" "${main_test_path}"
 
   echo
   echo 'Adjusting build.gradle'
-  sed_inplace "s/${package_name_pattern}\.App/${package_name}.${configuration_name}.Main/" "${root_directory}/build.gradle"
-  cat <<-EOF >>"${root_directory}/build.gradle"
+  sed_inplace "s/${package_name_pattern}\.App/${package_name}.${configuration_name}.Main/" "${gradle_root_directory}/build.gradle"
+  cat <<-EOF >>"${gradle_root_directory}/build.gradle"
 
 jar {
   manifest {
@@ -162,22 +168,24 @@ jar {
       "Main-Class": "${package_name}.${configuration_name}.Main"
     )
   }
+
+  archiveName '${gradle_project_name}.jar'
 }
 
 sourceSets {
   main {
     resources {
-      srcDirs "${rust_target_directory}"
+      srcDirs "${gradle_relative_rust_target_directory}"
       include "release/${jni_native_rust_dylib}"
       include "debug/${jni_native_rust_dylib}"
-      srcDirs "${build_directory}"
+      srcDirs "${gradle_relative_build_directory}"
       include "release/${jni_native_c_dylib}"
       include "debug/${jni_native_c_dylib}"
     }
   }
 }
 
-run {    
+run {
   systemProperties System.getProperties()
 }
 EOF
@@ -205,19 +213,19 @@ EOCOMMAND
 }
 
 function make_jni_example_init_java() {
-  local jni_source_code_directory
+  local jni_java_source_code_directory
   local jni_native_name
   local jni_native_name_upper
   local jni_native_name_hyphenated
 
-  jni_source_code_directory="${1}"
+  jni_java_source_code_directory="${1}"
   jni_native_name="${2}"
   jni_native_name_upper="${3}"
   jni_native_name_hyphenated="${4}"
 
-  if [ ! -f "${jni_source_code_directory}/JniExampleInit.java" ]
+  if [ ! -f "${jni_java_source_code_directory}/JniExampleInit.java" ]
   then
-    cat <<-EOF >"${jni_source_code_directory}/JniExampleInit.java"
+    cat <<-EOF >"${jni_java_source_code_directory}/JniExampleInit.java"
 package ${package_name}.${configuration_name};
 
 import java.io.File;
@@ -313,7 +321,7 @@ EOCOMMAND
 
   # Cargo keeps adding the same commented out entries to the .gitignore so let's ignore it.
   git checkout .gitignore
-  
+
   sed_inplace -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
 
   ensure_dir "${jni_native_code_rust_source_directory}"
@@ -407,7 +415,7 @@ EOF
     echo 'Making Jni native wrapper (note this currently generates a .class file as a side-effect)'
     javac -h "${jni_native_code_directory}" \
       -d ${classfiles_directory} \
-      "${jni_source_code_directory}/JniExample.java"
+      "${jni_java_source_code_directory}/JniExample.java"
 
     jni_c_header_path="$(get_jni_c_header_path)"
     jni_c_source_path="$(get_jni_c_source_path ${jni_c_header_path})"
@@ -474,6 +482,12 @@ EOF
 use jni::objects::{JClass};
 use jni::JNIEnv;
 
+#[cfg(debug_assertions)]
+const BUILD_TYPE_NAME: &str = "debug";
+
+#[cfg(not(debug_assertions))]
+const BUILD_TYPE_NAME: &str = "release";
+
 EOF
       fi #endif first pass at jni rust source file
 
@@ -498,7 +512,7 @@ extern "C" fn ${jni_function_name}(
     _class: JClass
 ) {
   println!("Hello from JNI rust Example '${jni_function_name}' !");
-  println!("TODO: Work out what build this is");
+  println!("This is a '{}' build", BUILD_TYPE_NAME);
 }
 EOF
 
@@ -528,6 +542,144 @@ EOF
   fi # endif no Jni java file
 }
 
+function make_local_clean() {
+  echo
+  echo 'Making local clean file...'
+  cat <<-EOF >"${clean_script_path}"
+rm -rf '${root_directory}/bin'
+rm -rf '${build_directory}'
+( cd '${root_directory}'; cargo clean; )
+EOF
+  chmod 755 "${clean_script_path}"
+}
+
+function make_jni_c_components() {
+  echo
+  echo 'Making JNI c components...'
+  (cd "${root_directory}"; \
+    mkdir -p "${build_directory}/release" "${intermediate_directory}/release/generated/jni"; make INTERMEDIATE_DIR="${intermediate_directory}/release" OUTPUT_DIR="${build_directory}/release" OPTIMIZATIONFLAG=-O3 BUILD_NAME='c Release'; \
+    mkdir -p "${build_directory}/debug" "${intermediate_directory}/debug/generated/jni"; make INTERMEDIATE_DIR="${intermediate_directory}/debug" OUTPUT_DIR="${build_directory}/debug" BUILD_NAME='c Debug';
+  )
+}
+
+function make_jni_rust_components() {
+  echo
+  echo 'Making JNI rust components...'
+  (cd "${jni_native_code_rust_directory}"; \
+    cargo build --release; \
+    cargo build;
+  )
+}
+
+function make_local_compile() {
+  local local_compile_file_path
+  local_compile_file_path="${root_directory}/local_compile"
+  echo
+  echo 'Making local compile file...'
+  cat <<-EOF >"${local_compile_file_path}"
+#!/usr/bin/env bash
+
+root_directory='.'
+build_directory='${build_directory}'
+intermediate_directory='${intermediate_directory}'
+jni_native_code_rust_directory='${jni_native_code_rust_directory}'
+
+EOF
+  type make_jni_c_components | tail -n +2 >>"${local_compile_file_path}"
+  echo >>"${local_compile_file_path}"
+  type make_jni_rust_components | tail -n +2 >>"${local_compile_file_path}"
+  chmod 755 "${local_compile_file_path}"
+  cat <<-EOF >>"${local_compile_file_path}"
+
+make_jni_c_components
+make_jni_rust_components
+EOF
+}
+
+function make_local_git_ignore() {
+  cat <<-EOF >>"${root_directory}/.local.gitignore"
+/target
+Cargo.lock
+
+*.sw?
+# Ignore Gradle build output directory
+build/
+
+# Ignore Gradle project-specific cache directory
+.gradle
+
+# Ignore bin directory
+bin/
+
+# Ignore Intellij stuff
+.classpath
+.idea/
+.project
+.settings/
+EOF
+}
+
+function run_gradle() {
+  echo 'Running with gradle'
+  echo 'Running c extension (gradle)'
+  ./gradlew --quiet run
+  echo
+
+  ./gradlew --quiet run -D${jni_native_name_hyphenated}.debug-build="true"
+  echo
+
+  echo 'Running rust extension (gradle)'
+  ./gradlew --quiet run -D${jni_native_name_hyphenated}.rust="true"
+  echo
+
+  ./gradlew --quiet run -D${jni_native_name_hyphenated}.rust="true" \
+    -D${jni_native_name_hyphenated}.debug-build="true"
+  
+}
+
+function run_everything() {
+  echo 'Running'
+  echo 'Running with java'
+  echo 'Running c extension (java)'
+  java -jar "${use_jar_path}"
+  echo
+
+  java -D${jni_native_name_hyphenated}.debug-build="true" -jar "${use_jar_path}"
+  echo
+
+  echo 'Running rust extension (java)'
+  java -D${jni_native_name_hyphenated}.rust="true" -jar "${use_jar_path}"
+  echo
+
+  java -D${jni_native_name_hyphenated}.debug-build="true" \
+    -D${jni_native_name_hyphenated}.rust="true" \
+    -jar "${use_jar_path}"
+  echo
+
+  run_gradle
+
+  echo 'Done running'
+}
+
+function make_local_run() {
+  local local_run_script_path
+  local_run_script_path="${root_directory}/local_run"
+  cat <<-EOF >"${local_run_script_path}"
+#!/usr/bin/env bash
+
+jni_native_name_hyphenated="${jni_native_name_hyphenated}"
+use_jar_path="${use_jar_path}"
+
+EOF
+  type run_gradle | tail -n +2 >>"${local_run_script_path}"
+
+  cat <<-EOF >>"${local_run_script_path}"
+
+run_gradle
+EOF
+  chmod 755 "${local_run_script_path}"
+}
+
 ## Script
 ### Create the top level directories
 echo
@@ -538,26 +690,30 @@ ensure_dir "${intermediate_directory}"
 ensure_dir "${jni_native_intermediate_directory}"
 
 echo 'Making source'
-ensure_dir "${source_code_directory}"
+ensure_dir "${java_source_code_directory}"
 ensure_dir "${classfiles_directory}"
 ensure_dir "${jar_directory}"
 
 ensure_dir "${jni_native_code_directory}" 'Creating jni directories.'
-ensure_dir "${jni_source_code_directory}" 'Making JNI on java side.'
+ensure_dir "${jni_java_source_code_directory}" 'Making JNI on java side.'
 
 for java_class in "${typical_java_classes[@]}"
 do
   make_typical_java "${java_class}"
 done
 
-make_main_java "${source_code_directory}" "${typical_java_classes[@]}"
+make_main_java "${java_source_code_directory}" "${typical_java_classes[@]}"
 make_manifest_file "${manifest_directory}" "${manifest_path}"
 run_gradle_init
 
-make_jni_example_init_java "${jni_source_code_directory}" "${jni_native_name}" "${jni_native_name_upper}" "${jni_native_name_hyphenated}"
+make_jni_example_init_java "${jni_java_source_code_directory}" "${jni_native_name}" "${jni_native_name_upper}" "${jni_native_name_hyphenated}"
 make_rust_jni "${jni_native_rust_name}" "${jni_native_code_rust_directory}" "${jni_native_code_rust_source_directory}"
 make_jni_example
 
+make_local_clean
+make_local_compile
+make_local_git_ignore
+make_local_run
 
 echo
 echo 'Done generating'

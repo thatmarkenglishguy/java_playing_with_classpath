@@ -3,6 +3,7 @@
 root_directory="."
 configuration_name='playing_with_classpath'
 package_name='com.me.example'
+jar_name='example'
 declare -a typical_java_classes
 typical_java_classes=( 'Foo' 'Bar' )
 

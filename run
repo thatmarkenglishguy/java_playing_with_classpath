@@ -11,7 +11,7 @@ source "${script_dir}/configuration"
 
 echo 'Running'
 echo 'Running with java'
-echo 'Running c extensioni (java)'
+echo 'Running c extension (java)'
 java -jar "${use_jar_path}"
 echo
 
@@ -27,19 +27,7 @@ java -Dplaying-with-classpath.debug-build="true" \
   -jar "${use_jar_path}"
 echo
 
-echo 'Running with gradle'
-echo 'Running c extension (gradle)'
-./gradlew --quiet run
-echo
-
-./gradlew --quiet run -Dplaying-with-classpath.debug-build="true"
-echo
-
-echo 'Running rust extension (gradle)'
-./gradlew --quiet run -Dplaying-with-classpath.rust="true"
-echo
-
-./gradlew --quiet run -Dplaying-with-classpath.rust="true" \
-  -Dplaying-with-classpath.debug-build="true"
+"${root_directory}/local_run"
 
 echo 'Done running'
+

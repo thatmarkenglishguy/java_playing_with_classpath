@@ -63,21 +63,60 @@ else
   exit 3
 fi
 
+if [[ "$(gradle -version | head -n3 | tail -n1)" =~ ([[:digit:].]+) ]]
+then
+  gradle_version="${BASH_REMATCH[1]}"
+  if [[ "${gradle_version}" =~ ([[:digit:]]+)\.([[:digit:]]+) ]]
+  then
+    gradle_major_version=${BASH_REMATCH[1]}
+    gradle_minor_version=${BASH_REMATCH[2]}
+  else
+    echo 'Unable to parse gradle version into major and minor.' >&2
+    exit 4
+  fi
+else
+  echo 'Unable to determine gradle version.' >&2
+  exit 4
+fi
+
+function gradle_has_app_directory() {
+  if [ ${gradle_major_version} -gt 6 ]
+  then
+    return 1
+  elif [ ${gradle_major_version} -eq 6 ] && [ ${gradle_minor_version} -gt 7 ]
+  then
+    return 1
+  else
+    return 0
+  fi
+}
+
 if [ ! -f "${project_configuration_path}" ]
 then
   echo "Unable to find project configuration: ${project_configuration_path}" >&2
-  exit 4
+  exit 5
 else
   source "${project_configuration_path}"
 fi
 
 root_directory="${root_directory:-.}"
+jar_name="${jar_name:-example}"
 source_directory="${root_directory}/src"
 package_subdirectory="$(echo "${package_name}" | tr '.' '/')"
 source_code_directory="${source_directory}/main/java/${package_subdirectory}"
-test_code_directory="${source_directory}/test/java/${package_subdirectory}"
-jni_source_code_directory="${source_code_directory}/jni"
-jni_java_path="${jni_source_code_directory}/JniExample.java"
+if gradle_has_app_directory
+then
+  gradle_root_directory="${root_directory}/app"
+else
+  gradle_root_directory="${root_directory}"
+fi
+
+gradle_source_directory="${gradle_root_directory}/src"
+gradle_build_directory="${gradle_root_directory}/build"
+java_source_code_directory="${gradle_source_directory}/main/java/${package_subdirectory}"
+java_test_code_directory="${gradle_source_directory}/test/java/${package_subdirectory}"
+jni_java_source_code_directory="${java_source_code_directory}/jni"
+jni_java_path="${jni_java_source_code_directory}/JniExample.java"
 jni_native_code_directory="${source_directory}/generated/jni"
 jni_native_code_rust_directory="${root_directory}"
 jni_native_code_rust_source_directory="${source_directory}/generated/jni/rust"
@@ -88,7 +127,7 @@ jni_native_rust_lib_path="${jni_native_code_rust_source_directory}/lib.rs"
 build_directory="${root_directory}/build"
 intermediate_directory="${build_directory}/intermediate"
 rust_target_directory="${root_directory}/target"
-jni_native_makefile_path="${build_directory}/Makefile"
+jni_native_makefile_path="${root_directory}/Makefile"
 jni_native_name="${configuration_name}"
 jni_native_name_hyphenated="$(echo ${jni_native_name} | tr '_' '-')"
 jni_native_name_lower="${jni_native_name}"
@@ -116,11 +155,11 @@ jni_native_rust_name_upper="$(echo ${jni_native_rust_name} | tr [:lower:] [:uppe
 classfiles_directory="${build_directory}/classfiles"
 classfiles_package_subdirectory="${package_subdirectory}/${configuration_name}"
 classfiles_package_directory="${classfiles_directory}/${classfiles_package_subdirectory}"
-gradle_project_name='example'
-gradle_jar_directory="${build_directory}/libs"
+gradle_project_name="${jar_name}"
+gradle_jar_directory="${gradle_build_directory}/libs"
 gradle_jar_path="${gradle_jar_directory}/${gradle_project_name}.jar"
 jar_directory="${build_directory}/jar"
-jar_path="${jar_directory}/example.jar"
+jar_path="${jar_directory}/${jar_name}.jar"
 jni_native_build_directory="${build_directory}/jni"
 if [ -f "${jar_path}" ]
 then
@@ -128,6 +167,7 @@ then
 else
   use_jar_path="${gradle_jar_path}"
 fi
+clean_script_path="${root_directory}/local_clean"
 
 function get_jni_c_header_path() {
   local jni_header_path
@@ -165,11 +205,29 @@ function get_jni_build_intermediate_from_src_path() {
 
 function get_makefile_to_src_path() {
   local jni_src_path
-  local jni_makefile_path
+  local jni_makefile_to_src_path
   jni_src_path="${1}"
-  jni_makefile_path="${jni_src_path#*src/}"
-  jni_makefile_path="../src/${jni_makefile_path}"
-  echo "${jni_makefile_path}"
+  jni_makefile_to_src_path="${jni_src_path#*src/}"
+  jni_makefile_to_src_path="src/${jni_makefile_to_src_path}"
+  echo "${jni_makefile_to_src_path}"
+}
+
+function get_root_path_relative_to_gradle() {
+  local root_path
+  root_path="${1}"
+
+  if ! gradle_has_app_directory
+  then
+    echo "${root_path}"
+  else
+    # We assume ./foo wants to be ../foo
+    if [[ "${root_path}" =~ ^\./ ]]
+    then
+      echo "${root_path/\./../}"
+    else
+      echo "../${root_path}"
+    fi
+  fi
 }
 
 function get_path_relative_to_src() {

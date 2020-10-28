@@ -9,14 +9,53 @@ fi
 
 source "${script_dir}/configuration" "${@}"
 
+root_directory="${root_directory:-.}"
+build_directory="${build_directory:-${root_directory}/build}"
+intermediate_directory="${intermediate_directory:-${build_directory}/intermediate}"
+
 echo 'Compiling'
-echo 'Running javac to create class files...'
 declare -a typical_java_java_files
 for java_class in "${typical_java_classes[@]}"
 do
-  typical_java_java_files+=( "${source_code_directory}/${java_class}.java" )
+  typical_java_java_files+=( "${java_source_code_directory}/${java_class}.java" )
 done
 
+function create_jar() {
+  echo
+  echo 'Creating jar...'
+  use_classfiles_directory="${classfiles_package_subdirectory}"
+  declare -a typical_java_class_files
+  for java_class in "${typical_java_classes[@]}"
+  do
+    typical_java_class_files+=( '-C' )
+    typical_java_class_files+=( "${classfiles_directory}" )
+    typical_java_class_files+=( "${use_classfiles_directory}/${java_class}.class" )
+  done
+  
+  jar \
+    --verbose \
+    --create \
+    --file "${jar_path}" \
+    --manifest "${manifest_path}" \
+    "${typical_java_class_files[@]}" \
+    -C "${classfiles_directory}" \
+    "${use_classfiles_directory}/Main.class" \
+    -C "${classfiles_directory}" \
+    "${use_classfiles_directory}/JniExampleInit.class" \
+    -C "${classfiles_directory}" \
+    "${use_classfiles_directory}/JniExample.class" \
+    -C "${build_directory}" \
+    "release/${jni_native_c_dylib}" \
+    -C "${build_directory}" \
+    "debug/${jni_native_c_dylib}" \
+    -C "${rust_target_directory}" \
+    "release/${jni_native_rust_dylib}" \
+    -C "${rust_target_directory}" \
+    "debug/${jni_native_rust_dylib}"
+}
+
+
+echo 'Running javac to create class files...'
 # -g Debug info
 # -d Directory to put class files in
 # -Xlint:all Enables all warnings
@@ -25,55 +64,13 @@ javac \
   -Xlint:all \
   -verbose \
   "${typical_java_java_files[@]}" \
-  "${jni_source_code_directory}/JniExample.java" \
-  "${jni_source_code_directory}/JniExampleInit.java" \
-  "${source_code_directory}/Main.java"
+  "${jni_java_source_code_directory}/JniExample.java" \
+  "${jni_java_source_code_directory}/JniExampleInit.java" \
+  "${java_source_code_directory}/Main.java"
 
-echo
-echo 'Making JNI c components...'
-(cd "${build_directory}"; \
-  mkdir -p release intermediate/release/generated/jni; make INTERMEDIATE_DIR=intermediate/release OUTPUT_DIR=release OPTIMIZATIONFLAG=-O3 BUILD_NAME='c Release'; \
-  mkdir -p debug intermediate/debug/generated/jni; make INTERMEDIATE_DIR=intermediate/debug OUTPUT_DIR=debug BUILD_NAME='c Debug';
-)
+"${root_directory}/local_compile"
 
-echo
-echo 'Making JNI rust components...'
-(cd "${jni_native_code_rust_directory}"; \
-  cargo build --release; \
-  cargo build;
-)
-
-echo
-echo 'Creating jar...'
-use_classfiles_directory="${classfiles_package_subdirectory}"
-declare -a typical_java_class_files
-for java_class in "${typical_java_classes[@]}"
-do
-  typical_java_class_files+=( '-C' )
-  typical_java_class_files+=( "${classfiles_directory}" )
-  typical_java_class_files+=( "${use_classfiles_directory}/${java_class}.class" )
-done
-
-jar \
-  --verbose \
-  --create \
-  --file "${jar_path}" \
-  --manifest "${manifest_path}" \
-  "${typical_java_class_files[@]}" \
-  -C "${classfiles_directory}" \
-  "${use_classfiles_directory}/Main.class" \
-  -C "${classfiles_directory}" \
-  "${use_classfiles_directory}/JniExampleInit.class" \
-  -C "${classfiles_directory}" \
-  "${use_classfiles_directory}/JniExample.class" \
-  -C "${build_directory}" \
-  "release/${jni_native_c_dylib}" \
-  -C "${build_directory}" \
-  "debug/${jni_native_c_dylib}" \
-  -C "${rust_target_directory}" \
-  "release/${jni_native_rust_dylib}" \
-  -C "${rust_target_directory}" \
-  "debug/${jni_native_rust_dylib}"
+create_jar
 echo
 echo 'Building with gradle'
 ./gradlew build

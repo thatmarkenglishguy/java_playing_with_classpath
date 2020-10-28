@@ -9,11 +9,12 @@ fi
 
 source "${script_dir}/configuration"
 
+rm -rf "${gradle_root_directory}"
 rm -rf ./bin
 rm -rf "${source_directory}"
 rm -rf "${build_directory}"
 rm -rf "${manifest_directory}"
 rm -f "${jni_native_code_rust_directory}/Cargo.toml" "${jni_native_code_rust_directory}/Cargo.lock"
 rm -f "${root_directory}/build.gradle" "${root_directory}/settings.gradle"
+rm -f "${root_directory}/Makefile"
 rm -f "${root_directory}/.project_configuration"
-
