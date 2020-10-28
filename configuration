@@ -88,7 +88,7 @@ jni_native_rust_lib_path="${jni_native_code_rust_source_directory}/lib.rs"
 build_directory="${root_directory}/build"
 intermediate_directory="${build_directory}/intermediate"
 rust_target_directory="${root_directory}/target"
-jni_native_makefile_path="${build_directory}/Makefile"
+jni_native_makefile_path="${root_directory}/Makefile"
 jni_native_name="${configuration_name}"
 jni_native_name_hyphenated="$(echo ${jni_native_name} | tr '_' '-')"
 jni_native_name_lower="${jni_native_name}"
@@ -128,6 +128,7 @@ then
 else
   use_jar_path="${gradle_jar_path}"
 fi
+clean_script_path="${root_directory}/local_clean"
 
 function get_jni_c_header_path() {
   local jni_header_path
@@ -165,11 +166,11 @@ function get_jni_build_intermediate_from_src_path() {
 
 function get_makefile_to_src_path() {
   local jni_src_path
-  local jni_makefile_path
+  local jni_makefile_to_src_path
   jni_src_path="${1}"
-  jni_makefile_path="${jni_src_path#*src/}"
-  jni_makefile_path="../src/${jni_makefile_path}"
-  echo "${jni_makefile_path}"
+  jni_makefile_to_src_path="${jni_src_path#*src/}"
+  jni_makefile_to_src_path="src/${jni_makefile_to_src_path}"
+  echo "${jni_makefile_to_src_path}"
 }
 
 function get_path_relative_to_src() {
