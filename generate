@@ -112,7 +112,7 @@ function make_manifest_file() {
   echo
   echo 'Making Manifest'
   ensure_dir "${manifest_directory}"
-  
+
   if [ ! -f "${manifest_path}" ]
   then
     cat <<-EOF >"${manifest_path}"
@@ -177,7 +177,7 @@ sourceSets {
   }
 }
 
-run {    
+run {
   systemProperties System.getProperties()
 }
 EOF
@@ -313,7 +313,7 @@ EOCOMMAND
 
   # Cargo keeps adding the same commented out entries to the .gitignore so let's ignore it.
   git checkout .gitignore
-  
+
   sed_inplace -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
 
   ensure_dir "${jni_native_code_rust_source_directory}"
@@ -474,6 +474,12 @@ EOF
 use jni::objects::{JClass};
 use jni::JNIEnv;
 
+#[cfg(debug_assertions)]
+const BUILD_TYPE_NAME: &str = "debug";
+
+#[cfg(not(debug_assertions))]
+const BUILD_TYPE_NAME: &str = "release";
+
 EOF
       fi #endif first pass at jni rust source file
 
@@ -498,7 +504,7 @@ extern "C" fn ${jni_function_name}(
     _class: JClass
 ) {
   println!("Hello from JNI rust Example '${jni_function_name}' !");
-  println!("TODO: Work out what build this is");
+  println!("This is a '{}' build", BUILD_TYPE_NAME);
 }
 EOF
 
@@ -526,6 +532,144 @@ ${tab}rm -f \$(OUTPUT_DIR)/${jni_native_c_dylib}
 
 EOF
   fi # endif no Jni java file
+}
+
+function make_local_clean() {
+  echo
+  echo 'Making local clean file...'
+  cat <<-EOF >"${clean_script_path}"
+rm -rf '${root_directory}/bin'
+rm -rf '${build_directory}'
+( cd '${root_directory}'; cargo clean; )
+EOF
+  chmod 755 "${clean_script_path}"
+}
+
+function make_jni_c_components() {
+  echo
+  echo 'Making JNI c components...'
+  (cd "${root_directory}"; \
+    mkdir -p "${build_directory}/release" "${intermediate_directory}/release/generated/jni"; make INTERMEDIATE_DIR="${intermediate_directory}/release" OUTPUT_DIR="${build_directory}/release" OPTIMIZATIONFLAG=-O3 BUILD_NAME='c Release'; \
+    mkdir -p "${build_directory}/debug" "${intermediate_directory}/debug/generated/jni"; make INTERMEDIATE_DIR="${intermediate_directory}/debug" OUTPUT_DIR="${build_directory}/debug" BUILD_NAME='c Debug';
+  )
+}
+
+function make_jni_rust_components() {
+  echo
+  echo 'Making JNI rust components...'
+  (cd "${jni_native_code_rust_directory}"; \
+    cargo build --release; \
+    cargo build;
+  )
+}
+
+function make_local_compile() {
+  local local_compile_file_path
+  local_compile_file_path="${root_directory}/local_compile"
+  echo
+  echo 'Making local compile file...'
+  cat <<-EOF >"${local_compile_file_path}"
+#!/usr/bin/env bash
+
+root_directory='.'
+build_directory='${build_directory}'
+intermediate_directory='${intermediate_directory}'
+jni_native_code_rust_directory='${jni_native_code_rust_directory}'
+
+EOF
+  type make_jni_c_components | tail -n +2 >>"${local_compile_file_path}"
+  echo >>"${local_compile_file_path}"
+  type make_jni_rust_components | tail -n +2 >>"${local_compile_file_path}"
+  chmod 755 "${local_compile_file_path}"
+  cat <<-EOF >>"${local_compile_file_path}"
+
+make_jni_c_components
+make_jni_rust_components
+EOF
+}
+
+function make_local_git_ignore() {
+  cat <<-EOF >>"${root_directory}/.local.gitignore"
+/target
+Cargo.lock
+
+*.sw?
+# Ignore Gradle build output directory
+build/
+
+# Ignore Gradle project-specific cache directory
+.gradle
+
+# Ignore bin directory
+bin/
+
+# Ignore Intellij stuff
+.classpath
+.idea/
+.project
+.settings/
+EOF
+}
+
+function run_gradle() {
+  echo 'Running with gradle'
+  echo 'Running c extension (gradle)'
+  ./gradlew --quiet run
+  echo
+
+  ./gradlew --quiet run -D${jni_native_name_hyphenated}.debug-build="true"
+  echo
+
+  echo 'Running rust extension (gradle)'
+  ./gradlew --quiet run -D${jni_native_name_hyphenated}.rust="true"
+  echo
+
+  ./gradlew --quiet run -D${jni_native_name_hyphenated}.rust="true" \
+    -D${jni_native_name_hyphenated}.debug-build="true"
+  
+}
+
+function run_everything() {
+  echo 'Running'
+  echo 'Running with java'
+  echo 'Running c extension (java)'
+  java -jar "${use_jar_path}"
+  echo
+
+  java -D${jni_native_name_hyphenated}.debug-build="true" -jar "${use_jar_path}"
+  echo
+
+  echo 'Running rust extension (java)'
+  java -D${jni_native_name_hyphenated}.rust="true" -jar "${use_jar_path}"
+  echo
+
+  java -D${jni_native_name_hyphenated}.debug-build="true" \
+    -D${jni_native_name_hyphenated}.rust="true" \
+    -jar "${use_jar_path}"
+  echo
+
+  run_gradle
+
+  echo 'Done running'
+}
+
+function make_local_run() {
+  local local_run_script_path
+  local_run_script_path="${root_directory}/local_run"
+  cat <<-EOF >"${local_run_script_path}"
+#!/usr/bin/env bash
+
+jni_native_name_hyphenated="${jni_native_name_hyphenated}"
+use_jar_path="${use_jar_path}"
+
+EOF
+  type run_gradle | tail -n +2 >>"${local_run_script_path}"
+
+  cat <<-EOF >>"${local_run_script_path}"
+
+run_gradle
+EOF
+  chmod 755 "${local_run_script_path}"
 }
 
 ## Script
@@ -558,6 +702,10 @@ make_jni_example_init_java "${jni_source_code_directory}" "${jni_native_name}" "
 make_rust_jni "${jni_native_rust_name}" "${jni_native_code_rust_directory}" "${jni_native_code_rust_source_directory}"
 make_jni_example
 
+make_local_clean
+make_local_compile
+make_local_git_ignore
+make_local_run
 
 echo
 echo 'Done generating'
