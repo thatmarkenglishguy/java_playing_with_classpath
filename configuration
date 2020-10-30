@@ -117,9 +117,9 @@ java_source_code_directory="${gradle_source_directory}/main/java/${package_subdi
 java_test_code_directory="${gradle_source_directory}/test/java/${package_subdirectory}"
 jni_java_source_code_directory="${java_source_code_directory}/jni"
 jni_java_path="${jni_java_source_code_directory}/JniExample.java"
-jni_native_code_directory="${source_directory}/generated/jni"
+jni_native_code_directory="${source_directory}/native/jni"
 jni_native_code_rust_directory="${root_directory}"
-jni_native_code_rust_source_directory="${source_directory}/generated/jni/rust"
+jni_native_code_rust_source_directory="${jni_native_code_directory}/rust"
 manifest_directory="${root_directory}/META-INF"
 manifest_path="${manifest_directory}/MANIFEST.MF"
 jni_native_rust_lib_path="${jni_native_code_rust_source_directory}/lib.rs"
@@ -193,16 +193,6 @@ function get_jni_c_object_path() {
   echo "${jni_object_path}"
 }
 
-function get_jni_build_intermediate_from_src_path() {
-  local jni_src_path
-  local jni_build_path
-  jni_src_path="${1}"
-  jni_build_path="${jni_src_path#*src/}"
-  jni_build_path="${intermediate_directory}/${jni_build_path}"
-
-  echo "${jni_build_path}"
-}
-
 function get_makefile_to_src_path() {
   local jni_src_path
   local jni_makefile_to_src_path
@@ -238,5 +228,17 @@ function get_path_relative_to_src() {
   echo "${src_relative_path}"
 }
 
-jni_native_intermediate_directory="$(get_jni_build_intermediate_from_src_path ${jni_native_code_directory})"
+function get_intermediate_path_from_src_path() {
+  local source_path
+  local build_configuration
+  local intermediate_path
+  source_path="${1}"
+  build_configuration="${2}"
+
+  intermediate_path="${source_path#*src/}"
+  intermediate_path="${intermediate_directory}/${build_configuration}/${intermediate_path}"
+  
+  echo "${intermediate_path}"
+}
+
 jni_native_rust_src_relative_lib_path="$(get_path_relative_to_src ${jni_native_rust_lib_path})"
