@@ -8,9 +8,18 @@ Can be run from any directory.
 ### [clean](./clean)
 Clean the source code and build artifacts (except the rust target directory because that would be slow).
 
-### [generate](./generate)
+### [generate [configuration_script]](./generate)
 Generate the source code and directory structure.
 Can pass a parameter of configuration script for naming.
+e.g.
+```bash
+root_directory="."
+configuration_name='playing_with_classpath'
+package_name='com.me.example'
+jar_name='example'
+declare -a typical_java_classes
+typical_java_classes=( 'Foo' 'Bar' )
+```
 
 ### [compile](./compile)
 Compile the source code into `.class` files and then a `.jar` file.
