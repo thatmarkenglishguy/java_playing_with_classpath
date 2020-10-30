@@ -73,10 +73,14 @@ then
   git add .gitignore gradlew gradlew.bat gradle
   git commit -m 'Initial commit'
   git add Cargo.toml
+  if gradle_has_app_directory
+  then
+    git add app
+  fi
   git add src
   git add META-INF
   git add Makefile
-  git add build.gradle settings.gradle
+  git add "${gradle_root_directory}/build.gradle" settings.gradle
   git add clean compile run
   git add README.md
   git commit -m 'Added source code.'
