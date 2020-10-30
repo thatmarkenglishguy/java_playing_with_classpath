@@ -12,12 +12,10 @@ tab='	'
 function sed_inplace() {
   case "${os_name}" in
     darwin)
-      #sed -i '' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
       sed -i '' "${@}"
       ;;
     *)
       sed -i'' "${@}"
-      #sed -i'' -e "${sed_command}" "${jni_native_code_rust_directory}/Cargo.toml"
       ;;
   esac
 }
@@ -31,6 +29,32 @@ function ensure_dir() {
     fi
     mkdir -p "${1}"
   fi
+}
+
+function rust_jni_type_from_c_jni_type() {
+  local c_jni_type
+  local rust_jni_type
+  local exit_code
+
+  c_jni_type="${1}"
+  rust_jni_type='unknown rust jni type'
+  exit_code=0
+
+  case "${c_jni_type}" in
+    void)
+      rust_jni_type='void'
+      ;;
+    jlong|jstring)
+      rust_jni_type="${c_jni_type}"
+      ;;
+    *)
+      echo "ARGH HOW DO I TRANSLATE C TYPE '${c_jni_type}' TO RUST TYPE ???" >&2
+      exit_code=1
+      ;;
+  esac
+
+  echo "${rust_jni_type}"
+  return ${exit_code}
 }
 
 source "${script_dir}/configuration" "${@}"
@@ -140,14 +164,13 @@ function run_gradle_init() {
   package_name_pattern="${package_name//./\.}"
 
   echo 'Running gradle init...'
-  set -x
+
   gradle init \
     --package "${package_name}" \
     --project-name "${gradle_project_name}" \
     --dsl groovy \
     --test-framework 'junit-jupiter' \
     --type 'java-application'
-  set +x
 
   rm "${java_source_code_directory}/App.java"
   mv "${java_test_code_directory}/AppTest.java" "${main_test_path}"
@@ -355,9 +378,13 @@ package ${package_name}.${configuration_name};
 
 public class JniExample {
     private native void sayHiJniNative();
+    private native String giveMeAStringJniNative(long longArg, String stringArg);
 
     public void sayHiJni() {
-      sayHiJniNative(); 
+      sayHiJniNative();
+
+      final String result = giveMeAStringJniNative(123, "string arg from java");
+      System.out.println("Result from giveMeAStringJniNative(123, \\"string arg from java\\"): " + result);
     }
 }
 EOF
@@ -423,11 +450,17 @@ EOF
     jni_c_header_makefile_path="$(get_makefile_to_src_path ${jni_c_header_path})"
     jni_c_source_makefile_path="$(get_makefile_to_src_path ${jni_c_source_path})"
     jni_rust_source_path="${jni_native_code_rust_source_directory}/jni_example/mod.rs"
-
     jni_function_regex='JNIEXPORT[[:space:]]+(.*)(Java_[^[:space:]]+)[[:space:]]*'
     jni_args_regex='([^;]+);'
     jni_source_ready_to_generate=0
     capture_jni_args=0
+
+    rust_use_jni_objects=''
+    rust_use_jni_sys=''
+    rust_jni_class_sys_delim=''
+    rust_jni_class_objects_delim=''
+    use_jni_env_statement=''
+    use_jobject_count=0
     while read -r
     do
       if [ ${capture_jni_args} -ne 0 ]
@@ -435,7 +468,10 @@ EOF
         (( capture_jni_args-- ))
         if [[ "${REPLY}" =~ ${jni_args_regex} ]]
         then
-          jni_function_args="${BASH_REMATCH[1]}"
+          jni_function_args_line_string="${BASH_REMATCH[1]}"
+          jni_function_args_string="${jni_function_args_line_string//[[:space:]\(\)]/}" #Strip space and parentheses
+          declare -a jni_function_args
+          IFS=',' read -a jni_function_args <<<"${jni_function_args_string}"
           jni_source_ready_to_generate=1
         fi
       elif [[ "${REPLY}" =~ ${jni_function_regex} ]]
@@ -443,11 +479,13 @@ EOF
         capture_jni_args=1
         jni_function_prefix="${BASH_REMATCH[1]}"
         jni_function_name="${BASH_REMATCH[2]}"
+        read -r jni_function_return_type remainder <<<"${jni_function_prefix}"
       fi
 
       # If first pass at jni c source file
       if [ ! -f "${jni_c_source_path}" ]
       then
+
         # Start of c source file
         cat <<-EOF >"${jni_c_source_path}"
 #include <iostream>
@@ -476,17 +514,12 @@ EOF
 
       if [ ! -f "${jni_rust_source_path}" ]
       then
-        #use jni::sys::{jboolean, jdouble, jint, jintArray, jlong, jlongArray, jstring};
-        #use jni::objects::{JClass, JString};
         cat <<-EOF >"${jni_rust_source_path}"
-use jni::objects::{JClass};
-use jni::JNIEnv;
-
 #[cfg(debug_assertions)]
-const BUILD_TYPE_NAME: &str = "debug";
+const BUILD_TYPE_NAME: &str = "rust debug";
 
 #[cfg(not(debug_assertions))]
-const BUILD_TYPE_NAME: &str = "release";
+const BUILD_TYPE_NAME: &str = "rust release";
 
 EOF
       fi #endif first pass at jni rust source file
@@ -494,30 +527,192 @@ EOF
       if [ ${jni_source_ready_to_generate} -ne 0 ]
       then
         jni_source_ready_to_generate=0
+
+        #echo "jni_function_prefix: '${jni_function_prefix}'"
+        #echo "jni_function_name: '${jni_function_name}'"
+        #echo "${jni_function_args_line_string}"
+        #echo "jni_function_args:"
+        #for arg in "${jni_function_args[@]}"; do echo " '${arg}'"; done
+        #echo "jni_function_return_type: '${jni_function_return_type}'"
+
+        ## Handle function arguments
+        jni_c_function_args='('
+        jni_rust_function_args=''
+        jni_arg_counter=1
+        jobject_count=0
+        c_delim=''
+        using_jni_env=0
+
+        for jni_arg in "${jni_function_args[@]}"
+        do
+          case "${jni_arg}" in
+            JNIEnv*)
+              use_jni_env_statement='use jni::JNIEnv;'
+              jni_c_function_args+="${c_delim}${jni_arg} jni_env"$'\n'
+              jni_rust_function_args+="    _env: JNIEnv,"$'\n'
+              ;;
+            jobject)
+              if (( jobject_count == 0 ))
+              then
+                jni_c_function_args+="${c_delim}${jni_arg} /*jni_class*/"$'\n'
+                jni_rust_function_args+="    _class: JClass,"$'\n'
+                new_rust_jni_type='JClass'
+
+                if [[ ! "${rust_use_jni_objects}" =~ ${new_rust_jni_type} ]]
+                then
+                  rust_use_jni_objects+="${rust_jni_class_objects_delim}${new_rust_jni_type}"
+                  rust_jni_class_objects_delim=', '
+                fi
+              else
+                jni_c_function_args+="${c_delim}${jni_arg} /*jni_arg${jni_arg_counter}*/"$'\n'
+                jni_rust_function_args+="    _jni_arg${jni_arg_counter}: jobject,"$'\n'
+                new_rust_jni_type='jobject'
+                if [[ ! "${rust_use_jni_sys}" =~ ${new_rust_jni_type} ]]
+                then
+                  rust_use_jni_sys+="${rust_jni_class_sys_delim}${new_rust_jni_type}"
+                  rust_jni_class_sys_delim=', '
+                fi
+                (( ++jni_arg_counter ))
+              fi
+              (( ++jobject_count ))
+              (( ++use_jobject_count ))
+              ;;
+            *)
+              jni_c_function_args+="${c_delim}${jni_arg} /*jni_arg${jni_arg_counter}*/"$'\n'
+              rust_jni_type="$(rust_jni_type_from_c_jni_type "${jni_arg}")"
+              jni_rust_function_args+="    _jni_arg${jni_arg_counter}: ${rust_jni_type},"$'\n'
+
+              new_rust_jni_type="$(rust_jni_type_from_c_jni_type "${jni_arg}")"
+              case "${new_rust_jni_type}" in
+                JClass|JString)
+                  if [[ ! "${rust_use_jni_objects}" =~ ${new_rust_jni_type} ]]
+                  then
+                    rust_use_jni_objects+="${rust_jni_class_objects_delim}${new_rust_jni_type}"
+                    rust_jni_class_objects_delim=', '
+                  fi
+                  ;;
+                *)
+                  if [[ ! "${rust_use_jni_sys}" =~ ${new_rust_jni_type} ]]
+                  then
+                    echo "arg type ADDDINGGGG: ${new_rust_jni_type}"
+                    rust_use_jni_sys+="${rust_jni_class_sys_delim}${new_rust_jni_type}"
+                  fi
+                  ;;
+              esac
+
+              rust_jni_class_sys_delim=', '
+              (( ++jni_arg_counter ))
+              ;;
+          esac
+          c_delim='  ,'
+        done
+
+        jni_c_function_args+=')'
+
+        ## Handle function return type
+        jni_rust_function_return_type="$(rust_jni_type_from_c_jni_type "${jni_function_return_type}")"
+        #echo "jni_rust_function_return_type: '${jni_rust_function_return_type}'"
+        jni_c_function_return_statement=''
+        jni_rust_function_return_statement=''
+
+        case "${jni_rust_function_return_type}" in
+          JClass|JString)
+            if [[ ! "${rust_use_jni_objects}" =~ ${jni_rust_function_return_type} ]]
+            then
+              rust_use_jni_objects+="${rust_jni_class_objects_delim}${jni_rust_function_return_type}"
+              rust_jni_class_objects_delim=', '
+            fi
+            ;;
+          void)
+            ;;
+          *)
+            if [[ ! "${rust_use_jni_sys}" =~ ${jni_rust_function_return_type} ]]
+            then
+              rust_use_jni_sys+="${rust_jni_class_sys_delim}${jni_rust_function_return_type}"
+              rust_jni_class_sys_delim=', '
+            fi
+            ;;
+        esac
+
+        case "${jni_function_return_type}" in
+          void)
+            ;;
+          jstring)
+            using_jni_env=1
+            read -r -d '' jni_c_function_return_statement <<-EOCRETURN
+  return jni_env->NewStringUTF("hello from c jni ${jni_function_name}");
+EOCRETURN
+            read -r -d '' jni_rust_function_return_statement <<-EORUSTRETURN
+  _env
+    .new_string("hello from rust jni ${jni_function_name}")
+    .expect("Unable to create java string")
+    .into_inner()
+
+EORUSTRETURN
+            ;;
+          jlong)
+            jni_c_function_return_statement = 'return 123L;'
+            jni_rust_function_return_statement='123'
+            ;;
+          *)
+            echo "ARG I DON'T KNOW HOW TO GENERATE RETURN STATEMENTS FOR RUST FROM '${jni_function_return_type}'" >&2
+            exit 1
+            ;;
+        esac
+
+        if [ ${using_jni_env} -eq 0 ]
+        then
+          jni_c_function_args="${jni_c_function_args/jni_env//*jni_env*/}"
+        fi
+
         # Now append the c implementation
         cat <<-EOF >>"${jni_c_source_path}"
 
-JNIEXPORT ${jni_function_prefix} ${jni_function_name} ${jni_function_args} {
+JNIEXPORT ${jni_function_prefix} ${jni_function_name} ${jni_c_function_args} {
   std::cout << "Hello from JNI Example '${jni_function_name}' !" << std::endl;
   std::cout << "The build is: '" TEXT(BUILD_NAME) "'" << std::endl;
+  ${jni_c_function_return_statement}
 }
 EOF
+        
+        # Append the rust implementation
+        jni_rust_function_return_declaration=''
+        if [ -n "${jni_rust_function_return_type}" ] && [ "${jni_rust_function_return_type}" != 'void' ]
+        then
+          jni_rust_function_return_declaration=" -> ${jni_rust_function_return_type}"
+        fi
 
-      # Append the rust implementation
-##[no_mangle]
-        cat <<-EOF >>"${jni_native_code_rust_source_directory}/jni_example/mod.rs"
+        cat <<-EOF >>"${jni_rust_source_path}"
 #[no_mangle]
 extern "C" fn ${jni_function_name}(
-    _env: JNIEnv,
-    _class: JClass
-) {
+${jni_rust_function_args}
+)${jni_rust_function_return_declaration} {
   println!("Hello from JNI rust Example '${jni_function_name}' !");
-  println!("This is a '{}' build", BUILD_TYPE_NAME);
+  println!("The build is: '{}'", BUILD_TYPE_NAME);
+  ${jni_rust_function_return_statement}
 }
 EOF
 
       fi # jni source ready to generate
     done <"${jni_c_header_path}"
+
+    # Finish the rust file
+    use_jni_objects_statement=''
+    use_jni_sys_statement=''
+
+    if [ -n "${rust_use_jni_objects}" ]
+    then
+      use_jni_objects_statement="use jni::objects::{${rust_use_jni_objects}};"$'\n'
+    fi
+    if [ -n "${rust_use_jni_sys}" ]
+    then
+      use_jni_sys_statement="use jni::sys::{${rust_use_jni_sys}};"$'\n'
+    fi
+
+    temp_rust_source_file=$(mktemp)
+    echo "${use_jni_sys_statement}${use_jni_objects_statement}${use_jni_env_statement}" >"${temp_rust_source_file}" >"${temp_rust_source_file}"
+    cat "${jni_rust_source_path}" >>"${temp_rust_source_file}"
+    mv "${temp_rust_source_file}" "${jni_rust_source_path}"
 
     # Finish the Makefile
     case "${os_name}" in
@@ -528,6 +723,7 @@ EOF
         cxx_shared_flag='-shared'
         ;;
     esac
+
     cat <<-EOF >>"${jni_native_makefile_path}"
 \$(OUTPUT_DIR)/${jni_native_c_dylib}: \$(OBJ)
 ${tab}\$(CXX) ${cxx_shared_flag} -o \$@ \$^ \$(CXXFLAGS)
@@ -548,7 +744,8 @@ function make_local_clean() {
   cat <<-EOF >"${clean_script_path}"
 rm -rf '${root_directory}/bin'
 rm -rf '${build_directory}'
-( cd '${root_directory}'; cargo clean; )
+rm -rf '${gradle_build_directory}'
+#( cd '${root_directory}'; cargo clean; )
 EOF
   chmod 755 "${clean_script_path}"
 }
@@ -556,17 +753,19 @@ EOF
 function make_jni_c_components() {
   echo
   echo 'Making JNI c components...'
-  (cd "${root_directory}"; \
-    mkdir -p "${build_directory}/release" "${intermediate_directory}/release/generated/jni"; make INTERMEDIATE_DIR="${intermediate_directory}/release" OUTPUT_DIR="${build_directory}/release" OPTIMIZATIONFLAG=-O3 BUILD_NAME='c Release'; \
-    mkdir -p "${build_directory}/debug" "${intermediate_directory}/debug/generated/jni"; make INTERMEDIATE_DIR="${intermediate_directory}/debug" OUTPUT_DIR="${build_directory}/debug" BUILD_NAME='c Debug';
+  (cd "${root_directory}";
+    mkdir -p "${build_directory}/release" "$(get_intermediate_path_from_src_path "${jni_native_code_directory}" 'release')";
+    make INTERMEDIATE_DIR="${intermediate_directory}/release" OUTPUT_DIR="${build_directory}/release" OPTIMIZATIONFLAG=-O3 BUILD_NAME='c Release';
+    mkdir -p "${build_directory}/debug" "$(get_intermediate_path_from_src_path "${jni_native_code_directory}" 'debug')";
+    make INTERMEDIATE_DIR="${intermediate_directory}/debug" OUTPUT_DIR="${build_directory}/debug" BUILD_NAME='c Debug';
   )
 }
 
 function make_jni_rust_components() {
   echo
   echo 'Making JNI rust components...'
-  (cd "${jni_native_code_rust_directory}"; \
-    cargo build --release; \
+  (cd "${jni_native_code_rust_directory}";
+    cargo build --release;
     cargo build;
   )
 }
@@ -582,9 +781,12 @@ function make_local_compile() {
 root_directory='.'
 build_directory='${build_directory}'
 intermediate_directory='${intermediate_directory}'
+jni_native_code_directory='${jni_native_code_directory}'
 jni_native_code_rust_directory='${jni_native_code_rust_directory}'
 
 EOF
+  type get_intermediate_path_from_src_path | tail -n +2 >>"${local_compile_file_path}"
+  echo >>"${local_compile_file_path}"
   type make_jni_c_components | tail -n +2 >>"${local_compile_file_path}"
   echo >>"${local_compile_file_path}"
   type make_jni_rust_components | tail -n +2 >>"${local_compile_file_path}"
@@ -616,6 +818,7 @@ bin/
 .idea/
 .project
 .settings/
+*.iml
 EOF
 }
 
@@ -687,7 +890,6 @@ echo 'Making build structure'
 rm -rf "${build_directory}"
 ensure_dir "${jni_native_build_directory}" "Making jni build directory ${jni_native_build_directory}"
 ensure_dir "${intermediate_directory}"
-ensure_dir "${jni_native_intermediate_directory}"
 
 echo 'Making source'
 ensure_dir "${java_source_code_directory}"
