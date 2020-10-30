@@ -594,7 +594,6 @@ EOF
                 *)
                   if [[ ! "${rust_use_jni_sys}" =~ ${new_rust_jni_type} ]]
                   then
-                    echo "arg type ADDDINGGGG: ${new_rust_jni_type}"
                     rust_use_jni_sys+="${rust_jni_class_sys_delim}${new_rust_jni_type}"
                   fi
                   ;;
