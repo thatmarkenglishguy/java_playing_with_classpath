@@ -22,18 +22,48 @@ typical_java_classes=( 'Foo' 'Bar' )
 ```
 
 ### [compile](./compile)
-Compile the source code into `.class` files and then a `.jar` file.
+Compile
+* the rust source (release and debug)
+* the c source (release and debug)
+* the java source code into `.class` files
+* a `.jar` file containing the java `.class` files, and rust and c release and debug jni dynamic libraries.
 
 ### [showinfo](./showinfo)
 Dump some information including jar file.
 
 ### [run](./run)
-Run the resulting jar file.
+Run the resulting jar file both by calling `java` directly, and via `./gradlew run`.
+The jar's behaviour is manipulated by specifying system properties for which jni library to use, and running debug or release.
 
 ## Additional scripts
-### [templatise](./templatise)
-Aftering generating code in this directory, use it as the template for another directory (passed as a parameter).
-Generated scripts build c/rust/java jni and run with gradle.
+### [templatise [TARGET_DIRECTORY]](./templatise)
+Aftering generating code in this directory, use it as the template for a project in another directory (passed as a parameter).
+Generated compile scripts build c/rust jni. java should be compiled by running `./gradlew build`.
+Generated run script runs with gradle.
 
 ### [all](./all)
 Run all the steps (apart from clean).
+
+## Common Usage.
+### Creating a new project
+```bash
+cp project_configuration my_project_configuration
+# Edit my_project_configuration as necessary
+./clean
+./generate my_project_configuration
+./templatise ../my_new_project
+cd ../my_new_project
+./compile
+./gradle build
+./run
+```
+
+### Running example project from scratch
+```bash
+./clean
+./generate
+./compile
+./run
+./showinfo
+```
+
