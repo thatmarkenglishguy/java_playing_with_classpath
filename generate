@@ -8,7 +8,7 @@ else
 fi
 tab='	'
 
-## Helper functions
+## Helper functions
 function sed_inplace() {
   case "${os_name}" in
     darwin)
