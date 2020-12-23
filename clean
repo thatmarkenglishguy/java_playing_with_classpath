@@ -9,6 +9,11 @@ fi
 
 source "${script_dir}/configuration"
 
+if [ -f "${clean_script_path}" ]
+then
+  "${clean_script_path}"
+fi
+
 rm -rf "${gradle_root_directory}"
 rm -rf ./bin
 rm -rf "${source_directory}"
@@ -18,3 +23,8 @@ rm -f "${jni_native_code_rust_directory}/Cargo.toml" "${jni_native_code_rust_dir
 rm -f "${root_directory}/build.gradle" "${root_directory}/settings.gradle"
 rm -f "${root_directory}/Makefile"
 rm -f "${root_directory}/.project_configuration"
+
+rm -f "${root_directory}/local_compile"
+rm -f "${root_directory}/local_run"
+rm -f "${clean_script_path}"
+
