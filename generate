@@ -376,7 +376,7 @@ i\\
 a\\
 # the Rust bindings to the Java Native Interface
 a\\
-jni = "0.17.0"
+jni = "0.18.0"
 a\\
 \\
 
@@ -820,6 +820,8 @@ function make_local_clean() {
   echo
   echo 'Making local clean file...'
   cat <<-EOF >"${clean_script_path}"
+#!/usr/bin/env sh
+
 rm -rf '${root_directory}/bin'
 rm -rf '${build_directory}'
 rm -rf '${gradle_build_directory}'
