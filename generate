@@ -435,6 +435,14 @@ public class JniExample {
       final String result = giveMeAStringJniNative(123, "string arg from java");
       System.out.println("Result from giveMeAStringJniNative(123, \\"string arg from java\\"): " + result);
     }
+
+    public String giveMeAStringJni(long longArg, String stringArg) {
+        //noinspection UnnecessaryLocalVariable
+        final String result = giveMeAStringJniNative(longArg, stringArg);
+
+        return result;
+    }
+
 }
 EOF
 
