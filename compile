@@ -43,6 +43,10 @@ function create_jar() {
     -C "${classfiles_directory}" \
     "${use_classfiles_directory}/jni/JniExampleInit.class" \
     -C "${classfiles_directory}" \
+    "${use_classfiles_directory}/jni/JniExampleInit\$JniBuild.class" \
+    -C "${classfiles_directory}" \
+    "${use_classfiles_directory}/jni/JniExampleInit\$JniImplementation.class" \
+    -C "${classfiles_directory}" \
     "${use_classfiles_directory}/jni/JniExample.class" \
     -C "${build_directory}" \
     "release/${jni_native_c_dylib}" \
