@@ -57,6 +57,25 @@ function rust_jni_type_from_c_jni_type() {
   return ${exit_code}
 }
 
+function rust_jni_arg_type_from_c_jni_type() {
+  local rust_jni_type
+  local exit_code
+  rust_jni_type="$(rust_jni_type_from_c_jni_type "${@}")"
+  exit_code=${?}
+
+  if [ ${exit_code} -eq 0 ]
+  then
+    case "${rust_jni_type}" in
+      jstring)
+        rust_jni_type='JString'
+        ;;
+    esac
+  fi
+
+  echo "${rust_jni_type}"
+  return ${exit_code}
+}
+
 source "${script_dir}/configuration" "${@}"
 if [ "${project_configuration_path}" != "${configuration_script_dir}/.project_configuration" ]
 then
@@ -99,6 +118,9 @@ function make_main_java() {
   then
     cat <<-EOF >"${java_source_code_directory}/Main.java"
 package ${package_name}.${configuration_name};
+
+import ${package_name}.${configuration_name}.jni.JniExample;
+import ${package_name}.${configuration_name}.jni.JniExampleInit;
 
 public class Main {
     public static void main(String[] args) {
@@ -161,12 +183,12 @@ function run_gradle_init() {
   gradle_relative_build_directory=$(get_root_path_relative_to_gradle "${build_directory}")
 
   main_test_path="${java_test_code_directory}/MainTest.java"
-  package_name_pattern="${package_name//./\.}"
+  package_name_pattern="${package_name//./\.}\\.${configuration_name}"
 
   echo 'Running gradle init...'
 
   gradle init \
-    --package "${package_name}" \
+    --package "${package_name}.${configuration_name}" \
     --project-name "${gradle_project_name}" \
     --dsl groovy \
     --test-framework 'junit-jupiter' \
@@ -249,29 +271,56 @@ function make_jni_example_init_java() {
   if [ ! -f "${jni_java_source_code_directory}/JniExampleInit.java" ]
   then
     cat <<-EOF >"${jni_java_source_code_directory}/JniExampleInit.java"
-package ${package_name}.${configuration_name};
+package ${package_name}.${configuration_name}.jni;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 
-final class JniExampleInit {
+public final class JniExampleInit {
+    enum JniImplementation {
+        Rust,
+        C
+    }
+
+    enum JniBuild {
+        Debug,
+        Release
+    }
+
     private static final String C_LIBRARY_NAME = "${jni_native_c_name}";
     private static final String RUST_LIBRARY_NAME = "${jni_native_rust_name}";
     private static boolean loaded = false;
 
     public static synchronized void init() {
+        final JniBuild useDebugBuild = (
+                "TRUE".equalsIgnoreCase(System.getenv("${jni_native_name_upper}_DEBUG"))
+                        || Boolean.getBoolean("${jni_native_name_hyphenated}.debug-build")
+        ) ?
+                JniBuild.Debug :
+                JniBuild.Release;
+        final JniImplementation useRustBuild = (
+                "TRUE".equalsIgnoreCase(System.getenv("${jni_native_rust_name_upper}"))
+                        || Boolean.getBoolean("${jni_native_name_hyphenated}.rust")
+                ) ?
+                JniImplementation.Rust :
+                JniImplementation.C;
+
+        init(useRustBuild, useDebugBuild);
+    }
+
+    public static synchronized void init(final JniImplementation jniImplementation, final JniBuild jniBuild) {
         if (loaded) {
             return;
         }
 
-        final boolean useDebugBuild = "TRUE".equalsIgnoreCase(System.getenv("${jni_native_name_upper}_DEBUG")) || Boolean.getBoolean("${jni_native_name_hyphenated}.debug-build");
-        final boolean useRustBuild = "TRUE".equalsIgnoreCase(System.getenv("${jni_native_rust_name_upper}")) || Boolean.getBoolean("${jni_native_name_hyphenated}.rust");
-        final String libraryName = useRustBuild ? System.mapLibraryName(RUST_LIBRARY_NAME) : System.mapLibraryName(C_LIBRARY_NAME);
+        final String libraryName = jniImplementation ==  JniImplementation.Rust ?
+            System.mapLibraryName(RUST_LIBRARY_NAME) :
+            System.mapLibraryName(C_LIBRARY_NAME);
         System.out.println("Library name: " + libraryName);
 
-        final String debugOrRelease = useDebugBuild ? "debug" : "release";
+        final String debugOrRelease = jniBuild == JniBuild.Debug ? "debug" : "release";
         System.out.println("Using the " + debugOrRelease + " Jni Example");
         final String path = "/" + debugOrRelease + "/" + libraryName;
         System.out.println("Resource stream is: " + path);
@@ -374,7 +423,7 @@ function make_jni_example() {
   if [ ! -f "${jni_java_path}" ]
   then
     cat <<-EOF >"${jni_java_path}"
-package ${package_name}.${configuration_name};
+package ${package_name}.${configuration_name}.jni;
 
 public class JniExample {
     private native void sayHiJniNative();
@@ -536,6 +585,8 @@ EOF
         #echo "jni_function_return_type: '${jni_function_return_type}'"
 
         ## Handle function arguments
+        declare -a jni_rust_function_format_arguments
+        jni_rust_function_format_arguments=()
         jni_c_function_args='('
         jni_rust_function_args=''
         jni_arg_counter=1
@@ -564,8 +615,10 @@ EOF
                   rust_jni_class_objects_delim=', '
                 fi
               else
+                rust_function_argument_name="_jni_arg${jni_arg_counter}"
                 jni_c_function_args+="${c_delim}${jni_arg} /*jni_arg${jni_arg_counter}*/"$'\n'
-                jni_rust_function_args+="    _jni_arg${jni_arg_counter}: jobject,"$'\n'
+                jni_rust_function_args+="    ${rust_function_argument_name}: jobject,"$'\n'
+                jni_rust_function_format_arguments+=( "${rust_function_argument_name}" )
                 new_rust_jni_type='jobject'
                 if [[ ! "${rust_use_jni_sys}" =~ ${new_rust_jni_type} ]]
                 then
@@ -579,10 +632,12 @@ EOF
               ;;
             *)
               jni_c_function_args+="${c_delim}${jni_arg} /*jni_arg${jni_arg_counter}*/"$'\n'
-              rust_jni_type="$(rust_jni_type_from_c_jni_type "${jni_arg}")"
-              jni_rust_function_args+="    _jni_arg${jni_arg_counter}: ${rust_jni_type},"$'\n'
+              rust_jni_type="$(rust_jni_arg_type_from_c_jni_type "${jni_arg}")"
+              rust_function_argument_name="_jni_arg${jni_arg_counter}"
+              jni_rust_function_args+="    ${rust_function_argument_name}: ${rust_jni_type},"$'\n'
+              jni_rust_function_format_argument="${rust_function_argument_name}"
+              new_rust_jni_type="$(rust_jni_arg_type_from_c_jni_type "${jni_arg}")"
 
-              new_rust_jni_type="$(rust_jni_type_from_c_jni_type "${jni_arg}")"
               case "${new_rust_jni_type}" in
                 JClass|JString)
                   if [[ ! "${rust_use_jni_objects}" =~ ${new_rust_jni_type} ]]
@@ -590,6 +645,7 @@ EOF
                     rust_use_jni_objects+="${rust_jni_class_objects_delim}${new_rust_jni_type}"
                     rust_jni_class_objects_delim=', '
                   fi
+                  jni_rust_function_format_argument="String::from(_env.get_string(${rust_function_argument_name}).expect(\"Unable to read input argument ${rust_function_argument_name}\"))"
                   ;;
                 *)
                   if [[ ! "${rust_use_jni_sys}" =~ ${new_rust_jni_type} ]]
@@ -599,6 +655,7 @@ EOF
                   ;;
               esac
 
+              jni_rust_function_format_arguments+=( "${jni_rust_function_format_argument}" )
               rust_jni_class_sys_delim=', '
               (( ++jni_arg_counter ))
               ;;
@@ -638,14 +695,36 @@ EOF
             ;;
           jstring)
             using_jni_env=1
+            jni_rust_format_string="\"hello from rust jni ${jni_function_name}"
+            if [ ${#jni_rust_function_format_arguments[@]} -gt 0 ]
+            then
+              jni_rust_format_string="format!(${jni_rust_format_string}"
+              for (( jni_rust_function_format_argument_counter=1;
+                     jni_rust_function_format_argument_counter <= ${#jni_rust_function_format_arguments[@]};
+                     ++jni_rust_function_format_argument_counter ))
+              do
+                jni_rust_format_string+=" arg${jni_rust_function_format_argument_counter}: {}."
+              done
+              jni_rust_format_string+='",'
+              jni_rust_format_string+=$'\n'
+              jni_rust_format_string+='            '
+              jni_rust_function_format_delim=''
+              for jni_rust_function_format_argument in "${jni_rust_function_format_arguments[@]}"
+              do
+                jni_rust_format_string+="${jni_rust_function_format_delim}${jni_rust_function_format_argument}"
+                jni_rust_function_format_delim=', '
+              done
+              jni_rust_format_string+=')' # Close the format! call
+            fi
+
             read -r -d '' jni_c_function_return_statement <<-EOCRETURN
   return jni_env->NewStringUTF("hello from c jni ${jni_function_name}");
 EOCRETURN
             read -r -d '' jni_rust_function_return_statement <<-EORUSTRETURN
-  _env
-    .new_string("hello from rust jni ${jni_function_name}")
-    .expect("Unable to create java string")
-    .into_inner()
+    _env
+        .new_string(${jni_rust_format_string})
+        .expect("Unable to create java string")
+        .into_inner()
 
 EORUSTRETURN
             ;;
@@ -686,13 +765,13 @@ EOF
 extern "C" fn ${jni_function_name}(
 ${jni_rust_function_args}
 )${jni_rust_function_return_declaration} {
-  println!("Hello from JNI rust Example '${jni_function_name}' !");
-  println!("The build is: '{}'", BUILD_TYPE_NAME);
-  ${jni_rust_function_return_statement}
+    println!("Hello from JNI rust Example '${jni_function_name}' !");
+    println!("The build is: '{}'", BUILD_TYPE_NAME);
+    ${jni_rust_function_return_statement}
 }
 EOF
 
-      fi # jni source ready to generate
+      fi # jni source ready to generate
     done <"${jni_c_header_path}"
 
     # Finish the rust file
@@ -744,7 +823,7 @@ function make_local_clean() {
 rm -rf '${root_directory}/bin'
 rm -rf '${build_directory}'
 rm -rf '${gradle_build_directory}'
-#( cd '${root_directory}'; cargo clean; )
+( cd '${root_directory}'; cargo clean -p '${jni_native_rust_name}' ; cargo clean -p '${jni_native_rust_name}' --release )
 EOF
   chmod 755 "${clean_script_path}"
 }

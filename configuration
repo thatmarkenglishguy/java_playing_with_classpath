@@ -102,7 +102,7 @@ fi
 root_directory="${root_directory:-.}"
 jar_name="${jar_name:-example}"
 source_directory="${root_directory}/src"
-package_subdirectory="$(echo "${package_name}" | tr '.' '/')"
+package_subdirectory="$(echo "${package_name}.${configuration_name}" | tr '.' '/')"
 source_code_directory="${source_directory}/main/java/${package_subdirectory}"
 if gradle_has_app_directory
 then
@@ -153,7 +153,7 @@ esac
 
 jni_native_rust_name_upper="$(echo ${jni_native_rust_name} | tr [:lower:] [:upper:])"
 classfiles_directory="${build_directory}/classfiles"
-classfiles_package_subdirectory="${package_subdirectory}/${configuration_name}"
+classfiles_package_subdirectory="${package_subdirectory}"
 classfiles_package_directory="${classfiles_directory}/${classfiles_package_subdirectory}"
 gradle_project_name="${jar_name}"
 gradle_jar_directory="${gradle_build_directory}/libs"
