@@ -54,7 +54,7 @@ cp project_configuration my_project_configuration
 ./templatise ../my_new_project
 cd ../my_new_project
 ./compile
-./gradle build
+./gradlew build
 ./run
 ```
 
