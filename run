@@ -15,15 +15,15 @@ echo 'Running c extension (java)'
 java -jar "${use_jar_path}"
 echo
 
-java -Dplaying-with-classpath.debug-build="true" -jar "${use_jar_path}"
+java -D${jni_native_name_hyphenated}.debug-build="true" -jar "${use_jar_path}"
 echo
 
 echo 'Running rust extension (java)'
-java -Dplaying-with-classpath.rust="true" -jar "${use_jar_path}"
+java -D${jni_native_name_hyphenated}.rust="true" -jar "${use_jar_path}"
 echo
 
-java -Dplaying-with-classpath.debug-build="true" \
-  -Dplaying-with-classpath.rust="true" \
+java -D${jni_native_name_hyphenated}.debug-build="true" \
+  -D${jni_native_name_hyphenated}.rust="true" \
   -jar "${use_jar_path}"
 echo
 
