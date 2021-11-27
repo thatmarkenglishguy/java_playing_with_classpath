@@ -8,7 +8,7 @@ else
 fi
 tab='	'
 
-## Helper functions
+## Helper functions
 function sed_inplace() {
   case "${os_name}" in
     darwin)
@@ -179,8 +179,17 @@ function run_gradle_init() {
   local package_name_pattern
   local gradle_relative_rust_target_directory
   local gradle_relative_build_directory
+  local archive_name_line
+
   gradle_relative_rust_target_directory=$(get_root_path_relative_to_gradle "${rust_target_directory}")
   gradle_relative_build_directory=$(get_root_path_relative_to_gradle "${build_directory}")
+
+  if [ ${gradle_major_version} -lt 6 ]
+  then
+    archive_name_line="archiveName '${gradle_project_name}.jar'"
+  else
+    archive_name_line="archiveFileName.set('${gradle_project_name}.jar')"
+  fi
 
   main_test_path="${java_test_code_directory}/MainTest.java"
   package_name_pattern="${package_name//./\.}\\.${configuration_name}"
@@ -214,7 +223,7 @@ jar {
     )
   }
 
-  archiveName '${gradle_project_name}.jar'
+  ${archive_name_line}
 }
 
 sourceSets {
