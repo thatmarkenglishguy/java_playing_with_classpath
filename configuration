@@ -82,12 +82,12 @@ fi
 function gradle_has_app_directory() {
   if [ ${gradle_major_version} -gt 6 ]
   then
-    return 1
+    return 0
   elif [ ${gradle_major_version} -eq 6 ] && [ ${gradle_minor_version} -gt 7 ]
   then
-    return 1
-  else
     return 0
+  else
+    return 1
   fi
 }
 
