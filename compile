@@ -31,12 +31,15 @@ function create_jar() {
     typical_java_class_files+=( "${classfiles_directory}" )
     typical_java_class_files+=( "${use_classfiles_directory}/${java_class}.class" )
   done
-  
+ 
+  # -c create
+  # -v verbose
+  # -f from file
+  # -m Create manifest from specified manifest file
+  # File order is significant: jar_path manifest_path [.class files]
   jar \
-    --verbose \
-    --create \
-    --file "${jar_path}" \
-    --manifest "${manifest_path}" \
+    -cvfm "${jar_path}" \
+    "${manifest_path}" \
     "${typical_java_class_files[@]}" \
     -C "${classfiles_directory}" \
     "${use_classfiles_directory}/Main.class" \
